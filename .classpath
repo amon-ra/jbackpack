@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="src" path="test"/>
+	<classpathentry kind="lib" path="libs/derby.jar"/>
+	<classpathentry kind="lib" path="libs/jarbundler-2.2.0.jar"/>
+	<classpathentry kind="lib" path="libs/jemmy.jar"/>
+	<classpathentry kind="lib" path="libs/jh.jar"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>
