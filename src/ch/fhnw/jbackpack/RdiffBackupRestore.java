@@ -204,6 +204,7 @@ public class RdiffBackupRestore {
             stringBuilder.append(command);
             stringBuilder.append(' ');
         }
+        //In windows this must use plink
         String backupScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
                 + "set password [lindex $argv 0]" + LINE_SEPARATOR
                 + "spawn -ignore HUP " + stringBuilder.toString() + LINE_SEPARATOR

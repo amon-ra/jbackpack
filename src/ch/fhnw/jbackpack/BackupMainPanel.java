@@ -4363,6 +4363,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                     return (returnValue == 0);
 
                 } else {
+                	// Modify to run in windows
                     // authentication with username and password
                     String password = new String(
                             sshPasswordField.getPassword());
