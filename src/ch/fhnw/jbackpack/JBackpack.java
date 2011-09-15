@@ -173,8 +173,29 @@ public class JBackpack {
      */
     public static void systemCheck() {
         ProcessExecutor processExecutor = new ProcessExecutor();
-        int returnValue = processExecutor.executeProcess(
+        int returnValue=0;
+        try{
+
+        	returnValue = processExecutor.executeProcess(
                 "rdiff-backup", "--version");
+        } catch (Exception ex) {
+            Logger.getLogger(JBackpack.class.getName()).log(
+                    Level.WARNING,
+                    "Error (posibly rdiff-backup not found): \"rdiff-backup --version\": {0}",
+                    returnValue);
+        }
+        Logger.getLogger(JBackpack.class.getName()).log(
+                Level.INFO,
+                "return value of \"rdiff-backup --version\": {0}",
+                returnValue);
+
+        //we execute always
+        java.awt.EventQueue.invokeLater(new Runnable() {
+
+            public void run() {
+                new BackupFrame().setVisible(true);
+            }
+        });
 
         if (returnValue == 0) {
             java.awt.EventQueue.invokeLater(new Runnable() {
@@ -185,10 +206,7 @@ public class JBackpack {
             });
 
         } else {
-            Logger.getLogger(JBackpack.class.getName()).log(
-                    Level.INFO,
-                    "return value of \"rdiff-backup --version\": {0}",
-                    returnValue);
+
             ResourceBundle bundle = ResourceBundle.getBundle(
                     "ch/fhnw/jbackpack/Strings");
             switch (CurrentOperatingSystem.OS) {
@@ -210,6 +228,7 @@ public class JBackpack {
                     System.exit(-1);
             }
         }
+
     }
 
     private static void checkJavaVersion() {

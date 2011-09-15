@@ -142,6 +142,11 @@ public class RdiffBackupRestore {
         // execute backup command
         String[] commandArray = new String[commandList.size()];
         commandArray = commandList.toArray(commandArray);
+
+    	Logger.getLogger(JBackpack.class.getName()).log(
+                Level.INFO,
+                "RdiffBackupRestore.java (backupViaFileSystem):\n {0}",
+                commandList);
         // do NOT(!) store stdOut, it very often leads to:
         // java.lang.OutOfMemoryError: Java heap space
         int returnValue =
@@ -220,6 +225,10 @@ public class RdiffBackupRestore {
                 + "puts \"return value: $ret\"" + LINE_SEPARATOR
                 + "exit $ret";
 
+        	Logger.getLogger(JBackpack.class.getName()).log(
+                Level.INFO,
+                "RdiffBackupRestore.java (backupViaSSH):\n {0}",
+                backupScript);
 //        // set level to OFF to prevent password leaking into
 //        // logfiles
 //        Logger logger = Logger.getLogger(
