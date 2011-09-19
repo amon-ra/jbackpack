@@ -217,7 +217,7 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
         final String description = "Dokeos+sshfs+rdiff-backup";
         try {
             // save zip locally
-            URL url = new URL("https://github.com/amon-ra/jbackpack/blob/master/rdiff-backup/windows/jbackpack-deps.zip?raw=true");
+            URL url = new URL("https://github.com/amon-ra/jbackpack/blob/master/deps/windows/jbackpack-deps.zip?raw=true");
 
             final DownloadSwingWorker downloadSwingWorker =
                     new DownloadSwingWorker(
