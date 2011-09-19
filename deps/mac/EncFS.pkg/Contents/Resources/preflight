@@ -1,0 +1,18 @@
+#!/bin/sh
+
+VERSION_LIST="EncFS-0.1 EncFS-0.2 EncFS-0.3 EncFS-Tiger-0.3 EncFS-1.0.0 EncFS-Leopard-1.0.0"
+
+removeIt()
+{
+	ENC_VERSION=$i
+	if [ ! -f "/Library/Receipts/${ENC_VERSION}.pkg/Contents/Archive.bom" ]; then 
+		echo "$ENC_VERSION not installed...skipping." 
+	else
+		sudo sh -c "lsbom -fls /Library/Receipts/${ENC_VERSION}.pkg/Contents/Archive.bom | colrm 1 1 | xargs rm -v"
+		sudo rm -rv /Library/Receipts/${ENC_VERSION}.pkg
+	fi
+}
+
+for i in $VERSION_LIST; do removeIt $1; done
+
+exit 0

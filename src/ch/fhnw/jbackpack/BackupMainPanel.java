@@ -762,9 +762,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
 
         // encfs checks
         String destinationPath = getRawBackupDestination();
-        if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)
-                && encfsEnabled
-                && FileTools.isEncFS(destinationPath)) {
+        //if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)
+        if (encfsEnabled && FileTools.isEncFS(destinationPath)) {
             showCard(encryptionCardPanel, "unlockPanel");
             destinationEncrypted = true;
             try {
@@ -2966,38 +2965,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         if (JOptionPane.OK_OPTION == dialog.showDialog()) {
             String oldPassword = dialog.getOldPassword();
             String newPassword = dialog.getNewPassword();
-            String changePasswordScript =
-                    "#!/usr/bin/expect -f" + LINE_SEPARATOR
-                    + "set oldPassword [lindex $argv 0]" + LINE_SEPARATOR
-                    + "set newPassword [lindex $argv 1]" + LINE_SEPARATOR
-                    + "spawn encfsctl passwd \""
-                    + getRawBackupDestination() + '\"' + LINE_SEPARATOR
-                    + "expect \"EncFS Password: \"" + LINE_SEPARATOR
-                    + "send \"$oldPassword\r\"" + LINE_SEPARATOR
-                    + "expect \"New Encfs Password: \"" + LINE_SEPARATOR
-                    + "send \"$newPassword\r\"" + LINE_SEPARATOR
-                    + "expect \"Verify Encfs Password: \"" + LINE_SEPARATOR
-                    + "send \"$newPassword\r\"" + LINE_SEPARATOR
-                    + "expect eof" + LINE_SEPARATOR
-                    + "set ret [lindex [wait] 3]" + LINE_SEPARATOR
-                    + "puts \"return value: $ret\"" + LINE_SEPARATOR
-                    + "exit $ret";
-
-            // set level to OFF to prevent password leaking into logfiles
-            Logger logger = Logger.getLogger(ProcessExecutor.class.getName());
-            Level level = logger.getLevel();
-            logger.setLevel(Level.OFF);
-
-            int returnValue = -1;
-            try {
-                returnValue = processExecutor.executeScript(
-                        changePasswordScript, oldPassword, newPassword);
-            } catch (IOException ex) {
-                LOGGER.log(Level.SEVERE, null, ex);
-            }
-
-            // restore previous log level
-            logger.setLevel(level);
+            int returnValue = FileTools.changePassword(oldPassword, newPassword, getRawBackupDestination());
 
             if (returnValue == 0) {
                 JOptionPane.showMessageDialog(parentFrame,
@@ -3551,20 +3519,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
             final File tmpCipherDir = FileTools.createTempDirectory(parentDir,
                     destinationDirectory.getName() + ".cipher");
             String tmpCipherPath = tmpCipherDir.getPath();
-            final String password = passwordDialog.getPassword();
-            File passwordScript = processExecutor.createScript(
-                    "#!/bin/sh" + LINE_SEPARATOR
-                    + "echo \"" + password + '"');
-            String passwordScriptPath = passwordScript.getPath();
-            String setupScript = "#!/bin/sh" + LINE_SEPARATOR
-                    + "echo \"\" | encfs --extpass=" + passwordScriptPath
-                    + " \"" + tmpCipherPath + "\" " + tmpEncfsMountPoint;
-            // the return value of the script is of no use...
-            processExecutor.executeScript(setupScript);
-            if (!passwordScript.delete()) {
-                LOGGER.log(Level.WARNING,
-                        "could not delete {0}", passwordScript);
-            }
+            FileTools.createEncTempDirectory(passwordDialog.getPassword(),tmpCipherPath,tmpEncfsMountPoint);
             // test, if setup above succeeded
             if (!FileTools.isEncFS(tmpCipherPath)) {
                 LOGGER.log(Level.WARNING,
@@ -3603,7 +3558,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                                 new EncryptionCheckSwingWorker(parentFrame,
                                 BackupMainPanel.this, directoryCheckDialog,
                                 dialogHandler, destinationDirectory,
-                                tmpCipherDir, encfsDir, password,
+                                tmpCipherDir, encfsDir, "", //password,
                                 maxFilenameLength);
                         if (FileTools.isSpaceKnown(destinationDirectory)) {
                             long usableSpace =
@@ -3668,11 +3623,63 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
     private void systemCheck() {
         sshfsEnabled = true;
         encfsEnabled = true;
+        int returnValue;
         switch (CurrentOperatingSystem.OS) {
+        	case Windows:
+                // expect is necessary for both sshfs and encfs password changes
+                    returnValue = processExecutor.executeProcess(
+                            USER_HOME+"/jbackpack/DokanSSHFS.exec", "--version");
+                    if (returnValue != 0) {
+                        JEditorPane editorPane = new JEditorPane("text/html",
+                                BUNDLE.getString("Warning_No_SSHFS"));
+                        Color background = UIManager.getDefaults().getColor(
+                                "Panel.background");
+                        editorPane.setBackground(background);
+                        JOptionPane.showMessageDialog(parentFrame,
+                                editorPane, BUNDLE.getString("Warning"),
+                                JOptionPane.WARNING_MESSAGE);
+                        disableSshfs();
+                        sshRadioButton.setToolTipText(
+                                BUNDLE.getString("Warning_No_SSHFS"));
+                    }
+                    // encryption checks
+
+                    //returnValue = processExecutor.executeProcess(
+                    //		USER_HOME+"/jbackpack/encfs.exe", "--version");
+                    returnValue = 1; //not suported yet
+                    if (returnValue == 0) {
+                        returnValue = processExecutor.executeProcess(
+                        		USER_HOME+"/jbackpack/rsync.exe", "--version");
+                        if (returnValue != 0) {
+                            JOptionPane.showMessageDialog(parentFrame,
+                                    BUNDLE.getString("Warning_No_Rsync"),
+                                    BUNDLE.getString("Warning"),
+                                    JOptionPane.WARNING_MESSAGE);
+                            disableEncfs();
+                            encryptionButton.setToolTipText(
+                                    BUNDLE.getString("Warning_No_Rsync"));
+                        }
+                    } else {
+                        JEditorPane editorPane = new JEditorPane("text/html",
+                                BUNDLE.getString(
+                                (CurrentOperatingSystem.OS
+                                == OperatingSystem.Mac_OS_X)
+                                ? "Warning_No_ENCFS_OSX" : "Warning_No_ENCFS"));
+                        Color background = UIManager.getDefaults().getColor(
+                                "Panel.background");
+                        editorPane.setBackground(background);
+                        JOptionPane.showMessageDialog(parentFrame,
+                                editorPane, BUNDLE.getString("Warning"),
+                                JOptionPane.WARNING_MESSAGE);
+                        disableEncfs();
+                        encryptionButton.setToolTipText(
+                                BUNDLE.getString("Warning_No_ENCFS"));
+                    }
+        		break;
             case Mac_OS_X:
             case Linux:
                 // expect is necessary for both sshfs and encfs password changes
-                int returnValue = processExecutor.executeProcess(
+                returnValue = processExecutor.executeProcess(
                         "which", "expect");
                 if (returnValue == 0) {
                     returnValue = processExecutor.executeProcess(
@@ -4124,7 +4131,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
     private String getSshfsMountPoint() throws IOException {
         String user = sshUserNameTextField.getText();
         String server = sshServerTextField.getText();
-        return FileTools.getMountPoint(user + '@' + server + ':');
+        if (CurrentOperatingSystem.OS != OperatingSystem.Windows) return FileTools.getMountPoint(user + '@' + server + ':');
+        else return USER_HOME+"/jbackpack/"+server;
     }
 
     private String getSmbfsMountPoint() throws IOException {
@@ -4344,7 +4352,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         protected Boolean doInBackground() {
             try {
                 String mountPoint = FileTools.createMountPoint(
-                        new File(USER_HOME), host).getPath();
+                        new File(USER_HOME+"/jbackpack/"), host).getPath();
                 String userHostDir = user + '@' + host + ':';
                 String baseDir = sshBaseDirTextField.getText();
                 if (!baseDir.isEmpty()) {
@@ -4355,57 +4363,14 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 }
 
                 if (sshPublicKeyRadioButton.isSelected()) {
-                    // collect output for error reporting
-                    int returnValue = processExecutor.executeProcess(true,
-                            true, "sshfs", "-o", "ServerAliveInterval=15",
-                            "-o", "workaround=rename,idmap=user",
-                            userHostDir, mountPoint);
-                    return (returnValue == 0);
-
+                	return FileTools.mountSSHFS(userHostDir,mountPoint,"");
                 } else {
-                	// Modify to run in windows
+
                     // authentication with username and password
                     String password = new String(
                             sshPasswordField.getPassword());
-                    String loginScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
-                            + "set password [lindex $argv 0]" + LINE_SEPARATOR
-                            + "spawn -ignore HUP sshfs -o "
-                            + "workaround=rename,idmap=user "
-                            + userHostDir + " " + mountPoint + LINE_SEPARATOR
-                            + "while 1 {" + LINE_SEPARATOR
-                            + "    expect {" + LINE_SEPARATOR
-                            + "        eof {" + LINE_SEPARATOR
-                            + "            break" + LINE_SEPARATOR
-                            + "        }" + LINE_SEPARATOR
-                            + "        \"continue connecting*\" {"
-                            + LINE_SEPARATOR
-                            + "            send \"yes\r\"" + LINE_SEPARATOR
-                            + "        }" + LINE_SEPARATOR
-                            + "        \"password:\" {" + LINE_SEPARATOR
-                            + "            send \"$password\r\""
-                            + LINE_SEPARATOR
-                            + "        }" + LINE_SEPARATOR
-                            + "    }" + LINE_SEPARATOR
-                            + "}" + LINE_SEPARATOR
-                            + "set ret [lindex [wait] 3]" + LINE_SEPARATOR
-                            + "puts \"return value: $ret\"" + LINE_SEPARATOR
-                            + "exit $ret";
+                    return FileTools.mountSSHFS(userHostDir,mountPoint,password);
 
-                    // set level to OFF to prevent password leaking into
-                    // logfiles
-                    Logger logger = Logger.getLogger(
-                            ProcessExecutor.class.getName());
-                    Level level = logger.getLevel();
-                    logger.setLevel(Level.OFF);
-
-                    // TODO: the loginScript blocks when storing any output...
-                    int returnValue = processExecutor.executeScript(
-                            loginScript, password);
-
-                    // restore previous log level
-                    logger.setLevel(level);
-
-                    return (returnValue == 0);
                 }
             } catch (Exception exception) {
                 LOGGER.log(Level.WARNING, "SSH login failed", exception);

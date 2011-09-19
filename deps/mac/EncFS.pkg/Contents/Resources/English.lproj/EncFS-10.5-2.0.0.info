@@ -1,0 +1,21 @@
+Title EncFS Encrypted Filesystem
+Version 
+Description This package will provide support for EncFS (1.3.2-1) for Mac OS X.  EncFS uses macfuse, which must be installed first.
+
+Macfuse implements a mechanism that makes it possible to implement a fully functional file system in a user-space program on Mac OS X.
+For more information on Encfs please visit http://arg0.net/wiki/encfs.
+
+DefaultLocation /
+DeleteWarning 
+
+### Package Flags
+
+NeedsAuthorization YES
+Required NO
+Relocatable NO
+RequiresReboot NO
+UseUserMask NO
+OverwritePermissions NO
+InstallFat NO
+RootVolumeOnly YES
+OnlyUpdateInstalledLanguages NO

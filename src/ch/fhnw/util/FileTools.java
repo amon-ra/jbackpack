@@ -48,6 +48,7 @@ public class FileTools {
     private final static NumberFormat NUMBER_FORMAT =
             NumberFormat.getInstance();
     private static final long UNKNOWN_SPACE = 1073741824000L;
+    public static final String USER_HOME = System.getProperty("user.home");
 
     /**
      * checks if a directory is writable
@@ -354,6 +355,8 @@ public class FileTools {
     public static String getEncfsMountPoint(String searchString)
             throws IOException {
         switch (CurrentOperatingSystem.OS) {
+//        	case Windows:
+//        		break:
             case Linux:
                 List<String> mounts = readFile(new File("/proc/mounts"));
                 for (String mount : mounts) {
@@ -445,10 +448,22 @@ public class FileTools {
     public static boolean umountFUSE(File mountPoint, boolean delete) {
         ProcessExecutor processExecutor = new ProcessExecutor();
         switch (CurrentOperatingSystem.OS) {
-            case Linux:
-                int returnValue = processExecutor.executeProcess(
-                        "fusermount", "-u", mountPoint.getPath());
+        	case Windows:
+               int returnValue = processExecutor.executeProcess(
+                        USER_HOME+"/jbackpack/dokanctl.exe", "/u", mountPoint.getPath());
                 boolean success = (returnValue == 0);
+                if (!success) {
+                    LOGGER.log(Level.WARNING,
+                            "could not umount {0}", mountPoint);
+                }
+                if (delete) {
+                    deleteIfEmpty(mountPoint);
+                }
+                return success;
+        	case Linux:
+                returnValue = processExecutor.executeProcess(
+                        "fusermount", "-u", mountPoint.getPath());
+                success = (returnValue == 0);
                 if (!success) {
                     LOGGER.log(Level.WARNING,
                             "could not umount {0}", mountPoint);
@@ -510,7 +525,7 @@ public class FileTools {
      */
     public static boolean mountEncFs(String cipherDir, String plainDir,
             String password) throws IOException {
-
+    	int returnValue;
         String script = "#!/bin/sh" + LINE_SEPARATOR
                 + "echo \"" + password + "\" | encfs -S \"" + cipherDir
                 + "\" \"" + plainDir + '\"' + LINE_SEPARATOR;
@@ -522,8 +537,8 @@ public class FileTools {
         Level level = logger.getLevel();
         logger.setLevel(Level.OFF);
 
-        int returnValue = processExecutor.executeScript(script);
-
+        if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)) returnValue = processExecutor.executeScript(script);
+        else returnValue = processExecutor.executeProcess(true,true,USER_HOME+"/jbackpack/enfs.exe",cipherDir,plainDir );
         // restore previous log level
         logger.setLevel(level);
 
@@ -545,7 +560,9 @@ public class FileTools {
      */
     public static boolean isEncFS(String directory) {
         ProcessExecutor processExecutor = new ProcessExecutor();
-        int returnValue = processExecutor.executeProcess("encfsctl", directory);
+        int returnValue;
+        if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)) returnValue = processExecutor.executeProcess("encfsctl", directory);
+        else returnValue = processExecutor.executeProcess(USER_HOME+"/jbackpack/encfsctl.exe", directory);
         return returnValue == 0;
     }
 
@@ -754,5 +771,168 @@ public class FileTools {
      */
     public static boolean isMounted(String device) throws IOException {
         return getMountPoint(device) != null;
+    }
+
+    /**
+     * Change password,
+     * @param rawBackupDestination dir destination
+     * @param oldPassword the encryption password
+     * @param newPassword the encryption password
+     * @return <tt>true</tt> if mounting was successfull,
+     * <tt>false</tt> otherwise
+     */
+    public static int changePassword(String oldPassword, String newPassword,
+            String rawBackupDestination) {
+        String changePasswordScript =
+                "#!/usr/bin/expect -f" + LINE_SEPARATOR
+                + "set oldPassword [lindex $argv 0]" + LINE_SEPARATOR
+                + "set newPassword [lindex $argv 1]" + LINE_SEPARATOR
+                + "spawn encfsctl passwd \""
+                + rawBackupDestination + '\"' + LINE_SEPARATOR
+                + "expect \"EncFS Password: \"" + LINE_SEPARATOR
+                + "send \"$oldPassword\r\"" + LINE_SEPARATOR
+                + "expect \"New Encfs Password: \"" + LINE_SEPARATOR
+                + "send \"$newPassword\r\"" + LINE_SEPARATOR
+                + "expect \"Verify Encfs Password: \"" + LINE_SEPARATOR
+                + "send \"$newPassword\r\"" + LINE_SEPARATOR
+                + "expect eof" + LINE_SEPARATOR
+                + "set ret [lindex [wait] 3]" + LINE_SEPARATOR
+                + "puts \"return value: $ret\"" + LINE_SEPARATOR
+                + "exit $ret";
+
+        if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)) return -1;
+
+        // set level to OFF to prevent password leaking into logfiles
+        Logger logger = Logger.getLogger(ProcessExecutor.class.getName());
+        Level level = logger.getLevel();
+        logger.setLevel(Level.OFF);
+
+        int returnValue = -1;
+        ProcessExecutor processExecutor = new ProcessExecutor();
+        try {
+            returnValue = processExecutor.executeScript(
+                    changePasswordScript, oldPassword, newPassword);
+        } catch (IOException ex) {
+            LOGGER.log(Level.SEVERE, null, ex);
+        }
+
+        // restore previous log level
+        logger.setLevel(level);
+
+        return returnValue;
+    }
+    /**
+     * Change createEncTempDirectory,
+     * @param rawBackupDestination dir destination
+     * @param oldPassword the encryption password
+     * @param newPassword the encryption password
+     * @return <tt>true</tt> if mounting was successfull,
+     * <tt>false</tt> otherwise
+     */
+    public static void createEncTempDirectory (String password,String tmpCipherPath, String tmpEncfsMountPoint){
+
+    	ProcessExecutor processExecutor = new ProcessExecutor();
+    	try {
+    		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows))
+    		{
+		        File passwordScript = processExecutor.createScript(
+		                "#!/bin/sh" + LINE_SEPARATOR
+		                + "echo \"" + password + '"');
+		        String passwordScriptPath = passwordScript.getPath();
+		        String setupScript = "#!/bin/sh" + LINE_SEPARATOR
+		                + "echo \"\" | encfs --extpass=" + passwordScriptPath
+		                + " \"" + tmpCipherPath + "\" " + tmpEncfsMountPoint;
+		        // the return value of the script is of no use...
+		        processExecutor.executeScript(setupScript);
+
+		        if (!passwordScript.delete()) {
+		            LOGGER.log(Level.WARNING,
+		                    "could not delete {0}", passwordScript);
+		        }
+    		}else{
+    			processExecutor.executeProcess(true,true,USER_HOME+"/jpackpack/encfs.exe",tmpCipherPath,tmpEncfsMountPoint);
+    		}
+        } catch (IOException ex) {
+            LOGGER.log(Level.SEVERE, null, ex);
+        }
+    }
+    /**
+     * Change mountSSHFS,
+     * @param rawBackupDestination dir destination
+     * @param oldPassword the encryption password
+     * @param newPassword the encryption password
+     * @return <tt>true</tt> if mounting was successfull,
+     * <tt>false</tt> otherwise
+     */
+    public static boolean mountSSHFS (String userHostDir, String mountPoint, String identity)
+    		 throws IOException {
+    	ProcessExecutor processExecutor = new ProcessExecutor();
+    	int returnValue;
+    	if (identity == "")
+    	{
+    		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows))
+    		{
+    			// collect output for error reporting
+
+		        returnValue = processExecutor.executeProcess(true,
+		                true, "sshfs", "-o", "ServerAliveInterval=15",
+		                "-o", "workaround=rename,idmap=user",
+		                userHostDir, mountPoint);
+		        return (returnValue == 0);
+    		}else{
+            	// Modify to run in windows
+            	// umount: dokanctl.exe /u DriveLetter
+		        returnValue = processExecutor.executeProcess(true,
+		                true, USER_HOME+"/jbackpack/DokeanSSHFS.exe", "-d",mountPoint,
+		                "-i",USER_HOME+"/jbackpack/key.ppk", userHostDir);
+		        return (returnValue == 0);
+    		}
+    	}
+    	else
+    	{
+            // set level to OFF to prevent password leaking into
+            // logfiles
+            Logger logger = Logger.getLogger(
+                    ProcessExecutor.class.getName());
+            Level level = logger.getLevel();
+            logger.setLevel(Level.OFF);
+    		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows))
+    		{
+            	String loginScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
+                    + "set password [lindex $argv 0]" + LINE_SEPARATOR
+                    + "spawn -ignore HUP sshfs -o "
+                    + "workaround=rename,idmap=user "
+                    + userHostDir + " " + mountPoint + LINE_SEPARATOR
+                    + "while 1 {" + LINE_SEPARATOR
+                    + "    expect {" + LINE_SEPARATOR
+                    + "        eof {" + LINE_SEPARATOR
+                    + "            break" + LINE_SEPARATOR
+                    + "        }" + LINE_SEPARATOR
+                    + "        \"continue connecting*\" {"
+                    + LINE_SEPARATOR
+                    + "            send \"yes\r\"" + LINE_SEPARATOR
+                    + "        }" + LINE_SEPARATOR
+                    + "        \"password:\" {" + LINE_SEPARATOR
+                    + "            send \"$password\r\""
+                    + LINE_SEPARATOR
+                    + "        }" + LINE_SEPARATOR
+                    + "    }" + LINE_SEPARATOR
+                    + "}" + LINE_SEPARATOR
+                    + "set ret [lindex [wait] 3]" + LINE_SEPARATOR
+                    + "puts \"return value: $ret\"" + LINE_SEPARATOR
+                    + "exit $ret";
+            	// TODO: the loginScript blocks when storing any output...
+            	returnValue = processExecutor.executeScript(
+                    loginScript, identity);
+    		}else {
+    			returnValue = processExecutor.executeScript(USER_HOME+"/jbackpack/DokeanSSHFS.exe","-P",identity,userHostDir);
+    		}
+            // restore previous log level
+            logger.setLevel(level);
+
+            return (returnValue == 0);
+    	}
+    	//return true;
+
     }
 }

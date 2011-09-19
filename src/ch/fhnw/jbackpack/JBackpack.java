@@ -179,23 +179,31 @@ public class JBackpack {
         	returnValue = processExecutor.executeProcess(
                 "rdiff-backup", "--version");
         } catch (Exception ex) {
-            Logger.getLogger(JBackpack.class.getName()).log(
-                    Level.WARNING,
-                    "Error (posibly rdiff-backup not found): \"rdiff-backup --version\": {0}",
-                    returnValue);
+        	switch (CurrentOperatingSystem.OS) {
+        		case Windows:
+        	        try{
+        	        	returnValue = processExecutor.executeProcess(
+        	        		System.getProperty("user.home")+"/jbackpack/rdiff-backup", "--version");
+        	        } catch (Exception ex2) {
+        	        	Logger.getLogger(JBackpack.class.getName()).log(
+        					Level.WARNING,
+        					"Error (posibly rdiff-backup not found): \"rdiff-backup --version\": {0}",
+        					returnValue);
+        	        }
+        			break;
+        		default:
+        			Logger.getLogger(JBackpack.class.getName()).log(
+        					Level.WARNING,
+        					"Error (posibly rdiff-backup not found): \"rdiff-backup --version\": {0}",
+        					returnValue);
+        	}
         }
+        /*
         Logger.getLogger(JBackpack.class.getName()).log(
                 Level.INFO,
                 "return value of \"rdiff-backup --version\": {0}",
                 returnValue);
-
-        //we execute always
-        java.awt.EventQueue.invokeLater(new Runnable() {
-
-            public void run() {
-                new BackupFrame().setVisible(true);
-            }
-        });
+        */
 
         if (returnValue == 0) {
             java.awt.EventQueue.invokeLater(new Runnable() {

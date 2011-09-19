@@ -25,10 +25,13 @@ package ch.fhnw.jbackpack;
 import ch.fhnw.util.FileTools;
 import ch.fhnw.util.FileTransferable;
 import ch.fhnw.util.ProcessExecutor;
+import java.util.Enumeration;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URL;
 import java.text.MessageFormat;
 import java.util.ResourceBundle;
@@ -209,13 +212,12 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
 
     private void installRdiffbackupButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_installRdiffbackupButtonActionPerformed
         final File win32File =
-                new File(HOME_DIR, "rdiff-backup-1.2.8-win32.zip");
+                new File(HOME_DIR+"/jbackpack/", "jbackpack-deps.zip");
         LOGGER.log(Level.INFO, "downloading to {0}", win32File);
-        final String description = "rdiff-backup";
+        final String description = "Dokeos+sshfs+rdiff-backup";
         try {
             // save zip locally
-            URL url = new URL("http://savannah.nongnu.org/download/"
-                    + "rdiff-backup/rdiff-backup-1.2.8-win32.zip");
+            URL url = new URL("https://github.com/amon-ra/jbackpack/blob/master/rdiff-backup/windows/jbackpack-deps.zip?raw=true");
 
             final DownloadSwingWorker downloadSwingWorker =
                     new DownloadSwingWorker(
@@ -271,8 +273,9 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
     private void unpackAndCopy(File win32File, String description)
             throws IOException {
         String osName = System.getProperty("os.name");
-        String system32Path = "C:\\Windows\\System32";
-        if ("Windows XP".equals(osName)) {
+        String system32Path = HOME_DIR+"/jbackpack/";
+        //if ("Windows XP".equals(osName)) {
+        if (true){
             // we can directly unzip rdiff-backup.exe to the destination
             unpack(win32File, new File(system32Path));
             String infoMessage = BUNDLE.getString("Installation_Finished");
@@ -306,8 +309,22 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
         }
     }
 
+    private static final void copyInputStream(InputStream in, OutputStream out)
+    		  throws IOException
+    		  {
+    		    byte[] buffer = new byte[1024];
+    		    int len;
+
+    		    while((len = in.read(buffer)) >= 0)
+    		      out.write(buffer, 0, len);
+
+    		    in.close();
+    		    out.close();
+    		  }
+
     private void unpack(File win32File, File destinationDir)
             throws IOException {
+    	/*
         ZipFile zipFile = new ZipFile(win32File);
         ZipEntry entry = zipFile.getEntry(
                 "rdiff-backup-1.2.8/rdiff-backup.exe");
@@ -321,6 +338,29 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
         }
         inputStream.close();
         fileOutputStream.close();
+        */
+        Enumeration entries;
+        ZipFile zipFile = new ZipFile(win32File);
+
+          entries = zipFile.entries();
+
+          while(entries.hasMoreElements()) {
+            ZipEntry entry = (ZipEntry)entries.nextElement();
+
+            if(entry.isDirectory()) {
+              // Assume directories are stored parents first then children.
+              //System.err.println("Extracting directory: " + entry.getName());
+              // This is not robust, just for demonstration purposes.
+              (new File(entry.getName())).mkdir();
+              continue;
+            }
+
+            //System.err.println("Extracting file: " + entry.getName());
+            copyInputStream(zipFile.getInputStream(entry),
+               new BufferedOutputStream(new FileOutputStream(entry.getName())));
+          }
+
+          zipFile.close();
     }
 
     private void rdiffBackupInstallationFailed() {

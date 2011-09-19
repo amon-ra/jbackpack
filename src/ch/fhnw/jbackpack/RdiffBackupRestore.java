@@ -196,6 +196,8 @@ public class RdiffBackupRestore {
                 excludes, tempDirPath, maxFileSize, minFileSize, compressFiles,
                 excludeDeviceFiles, excludeFifos, excludeOtherFileSystems,
                 excludeSockets, excludeSymlinks);
+        if (CurrentOperatingSystem.OS != OperatingSystem.Windows)
+        	commandList.add(createCommandRemoteSchema(host,password)); //--remote-schema "plink.exe -i privatekey.ppk %s rdiff-backup --server"
         commandList.add(user + '@' + host + "::" + directory);
 
         // wrap command list with backup script
@@ -205,53 +207,68 @@ public class RdiffBackupRestore {
             stringBuilder.append(' ');
         }
         //In windows this must use plink
-        String backupScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
-                + "set password [lindex $argv 0]" + LINE_SEPARATOR
-                + "spawn -ignore HUP " + stringBuilder.toString() + LINE_SEPARATOR
-                + "while 1 {" + LINE_SEPARATOR
-                + "    expect {" + LINE_SEPARATOR
-                + "        eof {" + LINE_SEPARATOR
-                + "            break" + LINE_SEPARATOR
-                + "        }" + LINE_SEPARATOR
-                + "        \"continue connecting*\" {" + LINE_SEPARATOR
-                + "            send \"yes\r\"" + LINE_SEPARATOR
-                + "        }" + LINE_SEPARATOR
-                + "        \"" + user + '@' + host + "'s password:\" {"
-                + LINE_SEPARATOR
-                + "            send \"$password\r\"" + LINE_SEPARATOR
-                + "        }" + LINE_SEPARATOR
-                + "    }" + LINE_SEPARATOR
-                + "}" + LINE_SEPARATOR
-                + "set ret [lindex [wait] 3]" + LINE_SEPARATOR
-                + "puts \"return value: $ret\"" + LINE_SEPARATOR
-                + "exit $ret";
+        int returnValue;
+        if (CurrentOperatingSystem.OS != OperatingSystem.Windows){
+	        String backupScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
+	                + "set password [lindex $argv 0]" + LINE_SEPARATOR
+	                //+ "spawn -ignore HUP "
+	                + stringBuilder.toString() + LINE_SEPARATOR
+	                + "while 1 {" + LINE_SEPARATOR
+	                + "    expect {" + LINE_SEPARATOR
+	                + "        eof {" + LINE_SEPARATOR
+	                + "            break" + LINE_SEPARATOR
+	                + "        }" + LINE_SEPARATOR
+	                + "        \"continue connecting*\" {" + LINE_SEPARATOR
+	                + "            send \"yes\r\"" + LINE_SEPARATOR
+	                + "        }" + LINE_SEPARATOR
+	                + "        \"" + user + '@' + host + "'s password:\" {"
+	                + LINE_SEPARATOR
+	                + "            send \"$password\r\"" + LINE_SEPARATOR
+	                + "        }" + LINE_SEPARATOR
+	                + "    }" + LINE_SEPARATOR
+	                + "}" + LINE_SEPARATOR
+	                + "set ret [lindex [wait] 3]" + LINE_SEPARATOR
+	                + "puts \"return value: $ret\"" + LINE_SEPARATOR
+	                + "exit $ret";
 
-        	Logger.getLogger(JBackpack.class.getName()).log(
-                Level.INFO,
-                "RdiffBackupRestore.java (backupViaSSH):\n {0}",
-                backupScript);
-//        // set level to OFF to prevent password leaking into
-//        // logfiles
-//        Logger logger = Logger.getLogger(
-//                ProcessExecutor.class.getName());
-//        Level level = logger.getLevel();
-//        logger.setLevel(Level.OFF);
+	        	Logger.getLogger(JBackpack.class.getName()).log(
+	                Level.INFO,
+	                "RdiffBackupRestore.java (backupViaSSH):\n {0}",
+	                backupScript);
+	//        // set level to OFF to prevent password leaking into
+	//        // logfiles
+	//        Logger logger = Logger.getLogger(
+	//                ProcessExecutor.class.getName());
+	//        Level level = logger.getLevel();
+	//        logger.setLevel(Level.OFF);
 
-        // do NOT(!) store stdOut, it very often leads to
-        // java.lang.OutOfMemoryError: Java heap space
-        int returnValue = processExecutor.executeScript(
-                false, true, backupScript, password);
+	        // do NOT(!) store stdOut, it very often leads to
+	        // java.lang.OutOfMemoryError: Java heap space
+	        returnValue = processExecutor.executeScript(
+	                true, true, backupScript, password);
 
-//        // restore previous log level
-//        logger.setLevel(level);
-
+	//        // restore previous log level
+	//        logger.setLevel(level);
+        }
+        else{
+        	returnValue = processExecutor.executeProcess(false,true,FileTools.USER_HOME+"/jbackpack/rdiff-backup.exe",user + '@' + host,stringBuilder.toString());
+        }
         // cleanup
         deleteIncludeExcludeFiles();
 
         return (returnValue == 0);
     }
 
-    /**
+    private String createCommandRemoteSchema(String host, String password) {
+    	//--remote-schema "plink.exe -i privatekey.ppk %s rdiff-backup --server"
+    	if (password == null)
+    		return "--remote-schema \"plink.exe -i "+host+".ppk %s rdiff-backup --server\"";
+    	else
+       		return "--remote-schema \"plink.exe -pw "+ password +" %s rdiff-backup --server\"";
+
+	}
+
+	/**
      * Restores the selected files
      * @param rdiffTimestamp the timestamp used for restoring
      * @param selectedFiles the files selected for restoring
@@ -561,7 +578,9 @@ public class RdiffBackupRestore {
             File excludesFile, String excludes) {
 
         List<String> commandList = new ArrayList<String>();
-        commandList.add("rdiff-backup");
+
+        if (CurrentOperatingSystem.OS != OperatingSystem.Windows) commandList.add("rdiff-backup");
+        else commandList.add(FileTools.USER_HOME+"/jbackpack/rdiff-backup.exe");
         commandList.add("--terminal-verbosity");
         commandList.add("7");
 

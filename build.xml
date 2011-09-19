@@ -98,7 +98,31 @@ with this program.  If not, see <http://www.gnu.org/licenses/>.
         <exec executable="mv">
             <arg line="dist/JBackpack.app /Volumes/JBackpack"/>
         </exec>
-        <echo>copying dmg template...</echo>
+        <echo>copying libraries...</echo>
+        <exec executable="cp">
+            <arg line="deps/mac/License /Volumes/JBackpack"/>
+        </exec>
+        <echo>copying libraries...</echo>
+        <exec executable="cp">
+            <arg line="deps/mac/OSXFUSE_Website /Volumes/JBackpack"/>
+        </exec>
+        <echo>copying libraries...</echo>
+        <exec executable="cp">
+            <arg line="deps/mac/EncFS.pkg /Volumes/JBackpack"/>
+        </exec>
+        <echo>copying libraries...</echo>
+        <exec executable="cp">
+            <arg line="deps/mac/OSXFUSE.pkg /Volumes/JBackpack"/>
+        </exec>
+        <echo>copying libraries...</echo>
+        <exec executable="cp">
+            <arg line="deps/mac/rdiff-backup.pkg /Volumes/JBackpack"/>
+        </exec>
+        <echo>copying libraries...</echo>
+        <exec executable="cp">
+            <arg line="deps/mac/sshfs /Volumes/JBackpack"/>
+        </exec>
+    	<echo>copying dmg template...</echo>
         <exec executable="ln">
             <arg line="-s /Applications &quot;/Volumes/JBackpack/ &quot;"/>
         </exec>
