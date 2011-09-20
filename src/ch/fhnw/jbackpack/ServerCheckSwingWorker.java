@@ -20,6 +20,7 @@ package ch.fhnw.jbackpack;
 
 import ch.fhnw.util.ModalDialogHandler;
 import ch.fhnw.util.ProcessExecutor;
+import ch.fhnw.util.FileTools;
 import java.awt.Window;
 import java.io.IOException;
 import java.text.MessageFormat;
@@ -97,52 +98,8 @@ public abstract class ServerCheckSwingWorker
      */
     @Override
     protected Boolean doInBackground() {
-        String checkScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
-                + "set password [lindex $argv 0]" + LINE_SEPARATOR
-                + "spawn -ignore HUP rdiff-backup --test-server "
-                + user + '@' + host + "::/" + LINE_SEPARATOR
-                + "while 1 {" + LINE_SEPARATOR
-                + "    expect {" + LINE_SEPARATOR
-                + "        eof {" + LINE_SEPARATOR
-                + "            break" + LINE_SEPARATOR
-                + "        }" + LINE_SEPARATOR
-                + "        \"Permission denied*\" {" + LINE_SEPARATOR
-                + "            exit " + WRONG_PASSWORD + LINE_SEPARATOR
-                + "        }" + LINE_SEPARATOR
-                + "        \"continue connecting*\" {" + LINE_SEPARATOR
-                + "            send \"yes\r\"" + LINE_SEPARATOR
-                + "        }" + LINE_SEPARATOR
-                + "        \"" + user + '@' + host + "'s password:\" {"
-                + LINE_SEPARATOR
-                + "            send \"$password\r\"" + LINE_SEPARATOR
-                + "        }" + LINE_SEPARATOR
-                + "    }" + LINE_SEPARATOR
-                + "}" + LINE_SEPARATOR
-                + "set ret [lindex [wait] 3]" + LINE_SEPARATOR
-                + "puts \"return value: $ret\"" + LINE_SEPARATOR
-                + "exit $ret";
-
-        // set level to OFF to prevent password leaking into
-        // logfiles
-        Logger logger = Logger.getLogger(
-                ProcessExecutor.class.getName());
-        Level level = logger.getLevel();
-        logger.setLevel(Level.OFF);
-
-        int returnValue = -1;
-        try {
-            returnValue = processExecutor.executeScript(true, true,
-                    checkScript, (password == null) ? "" : password);
-        } catch (IOException ex) {
-            LOGGER.log(Level.SEVERE, null, ex);
-        }
-
-        // restore previous log level
-        logger.setLevel(level);
-
-        wrongPassword = (WRONG_PASSWORD == returnValue);
-
-        return (returnValue == 0);
+    	wrongPassword = FileTools.testRdiffBackupServer(user,host,password,WRONG_PASSWORD,processExecutor);
+    	return wrongPassword;
     }
 
     /**

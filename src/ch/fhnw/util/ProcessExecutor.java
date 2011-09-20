@@ -101,7 +101,7 @@ public class ProcessExecutor {
      */
     public int executeScript(boolean storeStdOut, boolean storeStdErr,
             String script, String... parameters) throws IOException {
-        LOGGER.log(Level.INFO, "script:\n{0}", script);
+        LOGGER.log(Level.FINE, "script:\n{0}", script);
         File scriptFile = null;
         try {
             scriptFile = createScript(script);
@@ -179,6 +179,7 @@ public class ProcessExecutor {
             }
             stringBuilder.append("\"");
             LOGGER.fine(stringBuilder.toString());
+
         }
         stdOut = new ArrayList<String>();
         stdErr = new ArrayList<String>();
@@ -198,6 +199,65 @@ public class ProcessExecutor {
             stdoutReader.start();
             stderrReader.start();
             int exitValue = process.waitFor();
+            LOGGER.log(Level.FINEST, "Exitvalue: {0}", exitValue);
+
+            // wait for readers to finish...
+            if (storeStdOut) {
+                stdoutReader.join();
+            }
+            if (storeStdErr) {
+                stderrReader.join();
+            }
+            return exitValue;
+        } catch (IOException e) {
+            LOGGER.log(Level.WARNING, null, e);
+        } catch (InterruptedException e) {
+            LOGGER.log(Level.WARNING, null, e);
+        }
+        return -1;
+    }
+
+    /**
+     * executes the given command
+     * @param storeStdOut if <tt>true</tt>, the program stdout will be stored
+     * in an internal list
+     * @param storeStdErr if <tt>true</tt>, the program stderr will be stored
+     * in an internal list
+     * @param commandArray the command and parameters
+     * @return the exit value of the command
+     */
+    public int executeNProcess(boolean storeStdOut, boolean storeStdErr,
+            String... commandArray) {
+        if (LOGGER.isLoggable(Level.FINE)) {
+            StringBuilder stringBuilder = new StringBuilder();
+            stringBuilder.append("executing \"");
+            for (int i = 0; i < commandArray.length; i++) {
+                stringBuilder.append(commandArray[i]);
+                if (i != commandArray.length - 1) {
+                    stringBuilder.append(" ");
+                }
+            }
+            stringBuilder.append("\"");
+            LOGGER.fine(stringBuilder.toString());
+        }
+        stdOut = new ArrayList<String>();
+        stdErr = new ArrayList<String>();
+        stdAll = new ArrayList<String>();
+        ProcessBuilder processBuilder = new ProcessBuilder(commandArray);
+        if (environment != null) {
+            processBuilder.environment().putAll(environment);
+        }
+        try {
+            process = processBuilder.start();
+            StreamReader stdoutReader = new StreamReader(
+                    process.getInputStream(),
+                    "OUTPUT", stdOut, stdAll, storeStdOut);
+            StreamReader stderrReader = new StreamReader(
+                    process.getErrorStream(),
+                    "ERROR", stdErr, stdAll, storeStdErr);
+            stdoutReader.start();
+            stderrReader.start();
+            int exitValue = 0 ;//process.waitFor();
             LOGGER.log(Level.FINE, "exitValue = {0}", exitValue);
             // wait for readers to finish...
             if (storeStdOut) {

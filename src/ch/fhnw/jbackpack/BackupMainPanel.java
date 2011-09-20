@@ -44,6 +44,7 @@ import java.awt.Frame;
 import java.awt.LayoutManager;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.WindowEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
@@ -443,6 +444,32 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
      */
     public void setParentFrame(Frame parentFrame) {
         this.parentFrame = parentFrame;
+        parentFrame.addWindowListener(new java.awt.event.WindowAdapter() {
+            public void windowClosing(WindowEvent winEvt) {
+                // Perhaps ask user if they want to save any unsaved files first.
+                String password="";
+                String mountPoint="";
+                LOGGER.info("QUIT");
+                if (smbfsMounted) {
+                    password = new String(
+                            smbSudoPasswordField.getPassword());
+                    try{
+                    mountPoint = getSmbfsMountPoint();
+                    FileTools.umount(mountPoint,FileTools.SMBFS,password,true);
+                    }catch(Exception ex){
+                    	LOGGER.warning("get smb mountpoint"+ex);
+                    }
+                }
+                if (sshfsMounted) {
+                	try{
+        	        	mountPoint=getSshfsMountPoint();
+        	        	FileTools.umount(mountPoint, FileTools.SSHFS, "",true);
+        	        }catch(Exception ex){
+        	        	LOGGER.warning("get ssh mountpoint"+ex);
+        	        }
+                }
+            }
+        });
         rdiffChooserPanel.setParentWindow(parentFrame);
     }
 
@@ -2501,6 +2528,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 quitButtonActionPerformed(evt);
             }
         });
+
         quitButton.addFocusListener(new java.awt.event.FocusAdapter() {
             public void focusGained(java.awt.event.FocusEvent evt) {
                 quitButtonFocusGained(evt);
@@ -3305,11 +3333,25 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 String newPath = dialog.getSelectedPath();
                 File newDir = new File(newPath).getCanonicalFile();
                 newPath = newDir.getPath();
-                if (FileTools.isSubDir(mountDir, newDir)) {
-                    // cut off mountpoint
-                    newPath = newPath.substring(mountPoint.length());
-                    directoryTextField.setText(newPath);
-                } else {
+                if (CurrentOperatingSystem.OS != OperatingSystem.Windows){
+	                if (FileTools.isSubDir(mountDir, newDir)) {
+	                    // cut off mountpoint
+	                    newPath = newPath.substring(mountPoint.length());
+	                    directoryTextField.setText(newPath);
+	                } else {
+	                    String errorMessage = BUNDLE.getString(
+	                            "Error_Selected_Directory_Not_On_Server");
+	                    errorMessage = MessageFormat.format(
+	                            errorMessage, newPath, server);
+	                    JOptionPane.showMessageDialog(parentFrame,
+	                            errorMessage, BUNDLE.getString("Error"),
+	                            JOptionPane.ERROR_MESSAGE);
+	                }
+                }else{
+                	if (newPath.contains(FileTools.unitWin) || newPath.contains(FileTools.unitWinCaps)){
+                		newPath = newPath.substring(mountPoint.length());
+                		directoryTextField.setText(newPath);
+                	}else {
                     String errorMessage = BUNDLE.getString(
                             "Error_Selected_Directory_Not_On_Server");
                     errorMessage = MessageFormat.format(
@@ -3317,6 +3359,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                     JOptionPane.showMessageDialog(parentFrame,
                             errorMessage, BUNDLE.getString("Error"),
                             JOptionPane.ERROR_MESSAGE);
+                   }
                 }
             }
         } catch (IOException ex) {
@@ -3628,7 +3671,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         	case Windows:
                 // expect is necessary for both sshfs and encfs password changes
                     returnValue = processExecutor.executeProcess(
-                            USER_HOME+"/jbackpack/DokanSSHFS.exec", "--version");
+                            USER_HOME+"/jbackpack/DokanSSHFS.exe", "--version");
                     if (returnValue != 0) {
                         JEditorPane editorPane = new JEditorPane("text/html",
                                 BUNDLE.getString("Warning_No_SSHFS"));
@@ -4132,7 +4175,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         String user = sshUserNameTextField.getText();
         String server = sshServerTextField.getText();
         if (CurrentOperatingSystem.OS != OperatingSystem.Windows) return FileTools.getMountPoint(user + '@' + server + ':');
-        else return USER_HOME+"/jbackpack/"+server;
+        else return FileTools.unitWin;
     }
 
     private String getSmbfsMountPoint() throws IOException {
@@ -4352,24 +4395,19 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         protected Boolean doInBackground() {
             try {
                 String mountPoint = FileTools.createMountPoint(
-                        new File(USER_HOME+"/jbackpack/"), host).getPath();
-                String userHostDir = user + '@' + host + ':';
+                        new File(USER_HOME+"/.jbackpack/"), host).getPath();
+
                 String baseDir = sshBaseDirTextField.getText();
-                if (!baseDir.isEmpty()) {
-                    if (!baseDir.startsWith("/")) {
-                        userHostDir += '/';
-                    }
-                    userHostDir += baseDir;
-                }
+
 
                 if (sshPublicKeyRadioButton.isSelected()) {
-                	return FileTools.mountSSHFS(userHostDir,mountPoint,"");
+                	return FileTools.mountSSHFS(user,host,baseDir,mountPoint,null);
                 } else {
 
                     // authentication with username and password
                     String password = new String(
                             sshPasswordField.getPassword());
-                    return FileTools.mountSSHFS(userHostDir,mountPoint,password);
+                    return FileTools.mountSSHFS(user,host,baseDir,mountPoint,password);
 
                 }
             } catch (Exception exception) {

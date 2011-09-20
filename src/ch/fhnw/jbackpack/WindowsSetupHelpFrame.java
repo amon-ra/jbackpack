@@ -211,8 +211,10 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
 }//GEN-LAST:event_installMSButtonActionPerformed
 
     private void installRdiffbackupButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_installRdiffbackupButtonActionPerformed
-        final File win32File =
+        final File win32Dir = new File(HOME_DIR+"/jbackpack");
+    	final File win32File =
                 new File(HOME_DIR+"/jbackpack/", "jbackpack-deps.zip");
+    	win32Dir.mkdir();
         LOGGER.log(Level.INFO, "downloading to {0}", win32File);
         final String description = "Dokeos+sshfs+rdiff-backup";
         try {
@@ -274,6 +276,7 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
             throws IOException {
         String osName = System.getProperty("os.name");
         String system32Path = HOME_DIR+"/jbackpack/";
+        LOGGER.log(Level.INFO, "extracting to {0}", system32Path);
         //if ("Windows XP".equals(osName)) {
         if (true){
             // we can directly unzip rdiff-backup.exe to the destination
@@ -284,7 +287,8 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
                     BUNDLE.getString("Information"),
                     JOptionPane.INFORMATION_MESSAGE);
 
-        } else {
+        }
+        /*else {
             // UAC is in our way, all we can do is to unpack rdiff-backup.exe
             // into a temporary directory
             File tempDir = FileTools.createTempDirectory("jbackpack", null);
@@ -306,7 +310,7 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
             ProcessExecutor processExecutor = new ProcessExecutor();
             processExecutor.executeProcess("explorer.exe", system32Path);
 
-        }
+        }*/
     }
 
     private static final void copyInputStream(InputStream in, OutputStream out)
@@ -341,6 +345,7 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
         */
         Enumeration entries;
         ZipFile zipFile = new ZipFile(win32File);
+        destinationDir.mkdir();
 
           entries = zipFile.entries();
 
@@ -351,13 +356,13 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
               // Assume directories are stored parents first then children.
               //System.err.println("Extracting directory: " + entry.getName());
               // This is not robust, just for demonstration purposes.
-              (new File(entry.getName())).mkdir();
+              (new File(destinationDir+"/"+entry.getName())).mkdir();
               continue;
             }
 
             //System.err.println("Extracting file: " + entry.getName());
             copyInputStream(zipFile.getInputStream(entry),
-               new BufferedOutputStream(new FileOutputStream(entry.getName())));
+               new BufferedOutputStream(new FileOutputStream(destinationDir+"/"+entry.getName())));
           }
 
           zipFile.close();

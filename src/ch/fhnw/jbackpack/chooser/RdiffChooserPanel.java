@@ -1011,7 +1011,7 @@ public class RdiffChooserPanel
         @Override
         protected Boolean doInBackground() {
             long start = System.currentTimeMillis();
-            returnValue = processExecutor.executeProcess(true, true,
+            returnValue = FileTools.executeProcess(processExecutor,true, true,
                     "rdiff-backup", "--parsable-output", "-l",
                     selectedDirectory);
             long time = System.currentTimeMillis() - start;
@@ -1117,8 +1117,7 @@ public class RdiffChooserPanel
 
         @Override
         protected Object doInBackground() {
-            processExecutor.executeProcess("rdiff-backup",
-                    "--check-destination-dir", selectedDirectory);
+        	FileTools.testSelectedDirectory(selectedDirectory, processExecutor);
             return null;
         }
 

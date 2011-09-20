@@ -27,9 +27,11 @@ import java.util.Date;
 import java.util.ResourceBundle;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.logging.LogManager;
 import java.util.prefs.Preferences;
 import javax.swing.JOptionPane;
 import javax.swing.UIManager;
+
 
 /**
  * the JBackpack main class
@@ -54,6 +56,10 @@ public class JBackpack {
      * @param args the command line arguments
      */
     public static void main(String[] args) {
+    	//LogManager.getLogManager().reset();
+    	//Logger globalLogger = Logger.getLogger(java.util.logging.Logger.GLOBAL_LOGGER_NAME);
+    	//globalLogger.setLevel(Level.OFF);
+
         if ((args.length > 0) && "--reminder".equals(args[0])) {
             Preferences preferences =
                     Preferences.userNodeForPackage(JBackpack.class);
@@ -179,6 +185,12 @@ public class JBackpack {
         	returnValue = processExecutor.executeProcess(
                 "rdiff-backup", "--version");
         } catch (Exception ex) {
+        	Logger.getLogger(JBackpack.class.getName()).log(Level.INFO,
+			"Error trying others(posibly rdiff-backup not found): \"rdiff-backup --version\": {0}",
+			returnValue);
+        }
+
+        if (returnValue!=0){
         	switch (CurrentOperatingSystem.OS) {
         		case Windows:
         	        try{

@@ -191,27 +191,26 @@ public class RdiffBackupRestore {
             boolean excludeSockets, boolean excludeSymlinks)
             throws IOException {
 
-        // create command list
-        List<String> commandList = createBackupCommandList(source, includes,
-                excludes, tempDirPath, maxFileSize, minFileSize, compressFiles,
-                excludeDeviceFiles, excludeFifos, excludeOtherFileSystems,
-                excludeSockets, excludeSymlinks);
-        if (CurrentOperatingSystem.OS != OperatingSystem.Windows)
-        	commandList.add(createCommandRemoteSchema(host,password)); //--remote-schema "plink.exe -i privatekey.ppk %s rdiff-backup --server"
-        commandList.add(user + '@' + host + "::" + directory);
-
-        // wrap command list with backup script
-        StringBuilder stringBuilder = new StringBuilder();
-        for (String command : commandList) {
-            stringBuilder.append(command);
-            stringBuilder.append(' ');
-        }
-        //In windows this must use plink
         int returnValue;
         if (CurrentOperatingSystem.OS != OperatingSystem.Windows){
+        	// create command list
+            List<String> commandList;
+    		//commandList.add(createCommandRemoteSchema(host,password)); //--remote-schema "plink.exe -i privatekey.ppk %s rdiff-backup --server"
+		    commandList = createBackupCommandList(source, includes,
+		            excludes, tempDirPath, maxFileSize, minFileSize, compressFiles,
+		            excludeDeviceFiles, excludeFifos, excludeOtherFileSystems,
+		            excludeSockets, excludeSymlinks);
+		    commandList.add(user + '@' + host + "::" + directory);
+		    // wrap command list with backup script
+		    StringBuilder stringBuilder = new StringBuilder();
+		    for (String command : commandList) {
+		        stringBuilder.append(command);
+		        stringBuilder.append(' ');
+		    }
+		    //In windows this must use plink
 	        String backupScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
 	                + "set password [lindex $argv 0]" + LINE_SEPARATOR
-	                //+ "spawn -ignore HUP "
+	                + "spawn -ignore HUP "
 	                + stringBuilder.toString() + LINE_SEPARATOR
 	                + "while 1 {" + LINE_SEPARATOR
 	                + "    expect {" + LINE_SEPARATOR
@@ -235,12 +234,12 @@ public class RdiffBackupRestore {
 	                Level.INFO,
 	                "RdiffBackupRestore.java (backupViaSSH):\n {0}",
 	                backupScript);
-	//        // set level to OFF to prevent password leaking into
-	//        // logfiles
-	//        Logger logger = Logger.getLogger(
-	//                ProcessExecutor.class.getName());
-	//        Level level = logger.getLevel();
-	//        logger.setLevel(Level.OFF);
+	        // set level to OFF to prevent password leaking into
+	        // logfiles
+	        Logger logger = Logger.getLogger(
+	                ProcessExecutor.class.getName());
+	        Level level = logger.getLevel();
+	        logger.setLevel(Level.OFF);
 
 	        // do NOT(!) store stdOut, it very often leads to
 	        // java.lang.OutOfMemoryError: Java heap space
@@ -248,10 +247,24 @@ public class RdiffBackupRestore {
 	                true, true, backupScript, password);
 
 	//        // restore previous log level
-	//        logger.setLevel(level);
+	        logger.setLevel(level);
         }
         else{
-        	returnValue = processExecutor.executeProcess(false,true,FileTools.USER_HOME+"/jbackpack/rdiff-backup.exe",user + '@' + host,stringBuilder.toString());
+
+            	String[] commandList = createBackupCommandWin(source, includes,
+                        excludes, tempDirPath, maxFileSize, minFileSize, compressFiles,
+                        excludeDeviceFiles, excludeFifos, excludeOtherFileSystems,
+                        excludeSockets, excludeSymlinks,directory,user,host,password);
+
+    	        // set level to OFF to prevent password leaking into
+    	        // logfiles
+    	        Logger logger = Logger.getLogger(
+    	                ProcessExecutor.class.getName());
+    	        Level level = logger.getLevel();
+    	        //logger.setLevel(Level.OFF);
+            	returnValue = processExecutor.executeProcess(true,true,commandList);
+            	//        // restore previous log level
+    	        logger.setLevel(level);
         }
         // cleanup
         deleteIncludeExcludeFiles();
@@ -259,14 +272,6 @@ public class RdiffBackupRestore {
         return (returnValue == 0);
     }
 
-    private String createCommandRemoteSchema(String host, String password) {
-    	//--remote-schema "plink.exe -i privatekey.ppk %s rdiff-backup --server"
-    	if (password == null)
-    		return "--remote-schema \"plink.exe -i "+host+".ppk %s rdiff-backup --server\"";
-    	else
-       		return "--remote-schema \"plink.exe -pw "+ password +" %s rdiff-backup --server\"";
-
-	}
 
 	/**
      * Restores the selected files
@@ -448,6 +453,7 @@ public class RdiffBackupRestore {
             String backupDirectory) {
         HashMap<String, String> sessionStatistics =
                 new HashMap<String, String>();
+        if (LOGGER.isLoggable(Level.FINEST)) LOGGER.finest(backupDirectory);
         String sessionName = "session_statistics"
                 + getCurrentMirror(backupDirectory).getName().replaceAll(
                 "current_mirror", "");
@@ -526,6 +532,7 @@ public class RdiffBackupRestore {
         }
         List<String> commandList = createCommandList(tempDirPath,
                 includesFile, includes, excludesFile, excludes);
+        //commandList.add(createCommandRemoteSchema(host,password)); //--remote-schema "plink.exe -i privatekey.ppk %s rdiff-backup --server"
         if (maxFileSize != null) {
             commandList.add("--max-file-size");
             commandList.add(String.valueOf(maxFileSize));
@@ -564,6 +571,110 @@ public class RdiffBackupRestore {
         return commandList;
     }
 
+    private String[] createBackupCommandWin(File source,
+            String includes, String excludes, String tempDirPath,
+            Long maxFileSize, Long minFileSize, boolean compressFiles,
+            boolean excludeDeviceFiles, boolean excludeFifos,
+            boolean excludeOtherFileSystems, boolean excludeSockets,
+            boolean excludeSymlinks,String directory,String user,String host, String password) throws IOException {
+
+
+
+        // reset status
+        processExecutor = new ProcessExecutor();
+        currentFile = "";
+        fileCounter.set(0);
+
+        // add rdiff-backup output parser
+        processExecutor.addPropertyChangeListener(
+                new MyPropertyChangeListener());
+
+        // execute the backup process
+        if ((includes != null) && includes.length() > 0) {
+            includesFile = File.createTempFile("jbackpack_includes_", null);
+        } else {
+            includesFile = null;
+        }
+        if ((excludes != null) && excludes.length() > 0) {
+            excludesFile = File.createTempFile("jbackpack_excludes_", null);
+        } else {
+            excludesFile = null;
+        }
+        ArrayList<String> commandList = new ArrayList<String>() ;
+
+        commandList.add(FileTools.USER_HOME+"\\jbackpack\\rdiff-backup.exe");
+        //commandList.add("--version");
+
+        commandList.add("--terminal-verbosity");
+        commandList.add("7");
+
+        if (tempDirPath != null) {
+            commandList.add("--tempdir");
+            commandList.add(tempDirPath);
+        }
+
+        // !!! includes must be defined before excludes !!!
+        if ((includes != null) && includes.length() > 0) {
+            writeTempFile(includesFile, includes);
+            commandList.add("--include-globbing-filelist");
+            commandList.add(includesFile.getPath());
+        }
+        if ((excludes != null) && excludes.length() > 0) {
+            writeTempFile(excludesFile, excludes);
+            commandList.add("--exclude-globbing-filelist");
+            commandList.add(excludesFile.getPath());
+        }
+
+
+        if (maxFileSize != null) {
+            commandList.add("--max-file-size");
+            commandList.add(String.valueOf(maxFileSize));
+        }
+        if (minFileSize != null) {
+            commandList.add("--min-file-size");
+            commandList.add(String.valueOf(minFileSize));
+        }
+        if (excludeDeviceFiles) {
+            commandList.add("--exclude-device-files");
+        }
+        if (excludeFifos) {
+            commandList.add("--exclude-fifos");
+        }
+        if (excludeOtherFileSystems) {
+            commandList.add("--exclude-other-filesystems");
+        }
+        if (excludeSockets) {
+            commandList.add("--exclude-sockets");
+        }
+        if (excludeSymlinks) {
+            commandList.add("--exclude-symbolic-links");
+        }
+        if (!compressFiles) {
+            commandList.add("--no-compression");
+        }
+
+        commandList.add("--remote-schema");
+    	if (password == null)
+    		commandList.add( "\""+FileTools.USER_HOME+"\\jbackpack\\plink.exe -i "+host+".ppk %s rdiff-backup --server\"");
+    	else
+    		commandList.add( "\""+FileTools.USER_HOME+"\\jbackpack\\plink.exe -pw "+ password +" %s rdiff-backup --server\"");
+
+
+        String sourcePath = source.getPath();
+        if (CurrentOperatingSystem.OS == OperatingSystem.Windows) {
+            // Windows needs a path workaround. For more details see:
+            // http://wiki.rdiff-backup.org/wiki/index.php/BackupToFromWindowsToLinux#Path_Workarounds
+            sourcePath += '/';
+        }
+        commandList.add(sourcePath);
+        commandList.add(user + '@' + host + "::" + directory);
+
+
+        return commandList.toArray(new String[commandList.size()]);
+    }
+
+
+
     private void deleteIncludeExcludeFiles() {
         if ((includesFile != null) && (!includesFile.delete())) {
             LOGGER.log(Level.WARNING, "could not delete {0}", includesFile);
@@ -579,8 +690,8 @@ public class RdiffBackupRestore {
 
         List<String> commandList = new ArrayList<String>();
 
-        if (CurrentOperatingSystem.OS != OperatingSystem.Windows) commandList.add("rdiff-backup");
-        else commandList.add(FileTools.USER_HOME+"/jbackpack/rdiff-backup.exe");
+        commandList.add("rdiff-backup");
+
         commandList.add("--terminal-verbosity");
         commandList.add("7");
 

@@ -49,6 +49,10 @@ public class FileTools {
             NumberFormat.getInstance();
     private static final long UNKNOWN_SPACE = 1073741824000L;
     public static final String USER_HOME = System.getProperty("user.home");
+    public static final String unitWinCaps = "N:";
+    public static final String unitWin = "n:";
+    public static final int SSHFS = 2;
+    public static final int SMBFS = 1;
 
     /**
      * checks if a directory is writable
@@ -450,16 +454,13 @@ public class FileTools {
         switch (CurrentOperatingSystem.OS) {
         	case Windows:
                int returnValue = processExecutor.executeProcess(
-                        USER_HOME+"/jbackpack/dokanctl.exe", "/u", mountPoint.getPath());
+                        USER_HOME+"\\jbackpack\\dokanctl.exe", "/u", unitWin.substring(0, 1));
                 boolean success = (returnValue == 0);
                 if (!success) {
                     LOGGER.log(Level.WARNING,
                             "could not umount {0}", mountPoint);
                 }
-                if (delete) {
-                    deleteIfEmpty(mountPoint);
-                }
-                return success;
+                return true; //bug: dokanctl returns 1
         	case Linux:
                 returnValue = processExecutor.executeProcess(
                         "fusermount", "-u", mountPoint.getPath());
@@ -491,6 +492,87 @@ public class FileTools {
                         "{0} is not supported", CurrentOperatingSystem.OS);
                 return false;
         }
+    }
+
+    /**
+     * umounts selector
+     * @param mountPoint the mountpoint or unit to umount
+     * @param delete if <tt>true</tt>, the mountpoint will be deleted if it is
+     * empty
+     * @param type 1 sshfs, 2 smbfs
+     * @return <tt>true</tt>, if umounting succeeded, <tt>false</tt> otherwise
+     */
+    public static boolean umount(String mountPoint,int type,String password,boolean delete) {
+        ProcessExecutor processExecutor = new ProcessExecutor();
+        int returnValue = -1;
+        boolean success = false;
+
+        switch (CurrentOperatingSystem.OS) {
+        	case Windows:
+        	   if (type == SMBFS) returnValue = processExecutor.executeProcess(
+                       "net", "use", mountPoint, "/delete");
+        	   else if (type == SSHFS) returnValue = processExecutor.executeProcess(
+                        USER_HOME+"\\jbackpack\\dokanctl.exe", "/u", unitWin.substring(0, 1));
+                success = (returnValue == 0);
+                if (!success) {
+                    LOGGER.log(Level.WARNING,
+                            "could not umount {0}", mountPoint);
+                }
+                success= true; //bug: dokanctl returns 1
+                break;
+        	case Linux:
+        		if (type == SMBFS) {
+        			boolean errorS=false;
+        	        String umountScript = "#!/bin/sh" + LINE_SEPARATOR
+        	                + "echo " + password + " | sudo -S umount " + mountPoint;
+
+        	        // set level to OFF to prevent password leaking into logfiles
+        	        Logger logger = Logger.getLogger(ProcessExecutor.class.getName());
+        	        Level level = logger.getLevel();
+        	        logger.setLevel(Level.OFF);
+        			try{
+        				processExecutor.executeScript(umountScript);
+
+        			}catch(IOException ex){
+        				errorS=true;
+        			}
+    		        // restore previous log level
+    		        logger.setLevel(level);
+    		        if (errorS)                        LOGGER.log(Level.WARNING,
+                            "Linux SMB (using sudo) could not umount {0}", mountPoint);
+        		}
+        		else if (type == SSHFS) returnValue = processExecutor.executeProcess(
+                        "fusermount", "-u", mountPoint);
+                success = (returnValue == 0);
+                if (!success) {
+                    LOGGER.log(Level.WARNING,
+                            "could not umount {0}", mountPoint);
+                }
+                if (delete) {
+                    deleteIfEmpty(new File(mountPoint));
+                }
+                break;
+
+            case Mac_OS_X:
+                returnValue = processExecutor.executeProcess(
+                        "umount", mountPoint);
+                success = (returnValue == 0);
+                if (!success) {
+                    LOGGER.log(Level.WARNING,
+                            "could not umount {0}", mountPoint);
+                }
+                if (delete) {
+                    deleteIfEmpty(new File(mountPoint));
+                }
+                break;
+
+            default:
+                LOGGER.log(Level.WARNING,
+                        "{0} is not supported", CurrentOperatingSystem.OS);
+                success= false;
+        }
+
+        return success;
     }
 
     /**
@@ -538,7 +620,7 @@ public class FileTools {
         logger.setLevel(Level.OFF);
 
         if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)) returnValue = processExecutor.executeScript(script);
-        else returnValue = processExecutor.executeProcess(true,true,USER_HOME+"/jbackpack/enfs.exe",cipherDir,plainDir );
+        else returnValue = processExecutor.executeProcess(true,true,USER_HOME+"\\jbackpack\\enfs.exe",cipherDir,plainDir );
         // restore previous log level
         logger.setLevel(level);
 
@@ -562,7 +644,7 @@ public class FileTools {
         ProcessExecutor processExecutor = new ProcessExecutor();
         int returnValue;
         if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)) returnValue = processExecutor.executeProcess("encfsctl", directory);
-        else returnValue = processExecutor.executeProcess(USER_HOME+"/jbackpack/encfsctl.exe", directory);
+        else returnValue = processExecutor.executeProcess(USER_HOME+"\\jbackpack\\encfsctl.exe", directory);
         return returnValue == 0;
     }
 
@@ -632,6 +714,7 @@ public class FileTools {
      */
     public static File createMountPoint(File directory, String name)
             throws IOException {
+    	if ((CurrentOperatingSystem.OS == OperatingSystem.Windows)) return new File(unitWin);
         File mountPoint = new File(directory, name);
         if (mountPoint.exists()) {
             if (isMountPoint(mountPoint.getPath())
@@ -678,7 +761,12 @@ public class FileTools {
      * @throws IOException if an I/O exception occurs
      */
     public static boolean isMountPoint(String path) throws IOException {
+
         switch (CurrentOperatingSystem.OS) {
+        	case Windows:
+        		if (path == "n") return true;
+                LOGGER.log(Level.FINEST,"mountpoint:",path);
+        		break;
             case Linux:
                 List<String> mounts = readFile(new File("/proc/mounts"));
                 for (String mount : mounts) {
@@ -864,11 +952,18 @@ public class FileTools {
      * @return <tt>true</tt> if mounting was successfull,
      * <tt>false</tt> otherwise
      */
-    public static boolean mountSSHFS (String userHostDir, String mountPoint, String identity)
+    public static boolean mountSSHFS (String user,String host,String baseDir, String mountPoint, String identity)
     		 throws IOException {
     	ProcessExecutor processExecutor = new ProcessExecutor();
+    	String userHostDir = user + "@" + host + ':';
     	int returnValue;
-    	if (identity == "")
+        if (!baseDir.isEmpty()) {
+            if (!baseDir.startsWith("/")) {
+                userHostDir += '/';
+            }
+            userHostDir += baseDir;
+        }
+    	if (identity == null)
     	{
     		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows))
     		{
@@ -882,9 +977,9 @@ public class FileTools {
     		}else{
             	// Modify to run in windows
             	// umount: dokanctl.exe /u DriveLetter
-		        returnValue = processExecutor.executeProcess(true,
-		                true, USER_HOME+"/jbackpack/DokeanSSHFS.exe", "-d",mountPoint,
-		                "-i",USER_HOME+"/jbackpack/key.ppk", userHostDir);
+		        returnValue = processExecutor.executeNProcess(true,
+		                true, USER_HOME+"\\jbackpack\\DokanSSHFS.exe", // "-d",mountPoint,
+		                "-i",USER_HOME+"\\jbackpack\\"+host+".ppk", userHostDir);
 		        return (returnValue == 0);
     		}
     	}
@@ -896,11 +991,13 @@ public class FileTools {
                     ProcessExecutor.class.getName());
             Level level = logger.getLevel();
             logger.setLevel(Level.OFF);
+            //logger.info("sshMount:"+mountPoint);
     		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows))
     		{
             	String loginScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
                     + "set password [lindex $argv 0]" + LINE_SEPARATOR
                     + "spawn -ignore HUP sshfs -o "
+                    //+ "sshfs -o "
                     + "workaround=rename,idmap=user "
                     + userHostDir + " " + mountPoint + LINE_SEPARATOR
                     + "while 1 {" + LINE_SEPARATOR
@@ -925,7 +1022,11 @@ public class FileTools {
             	returnValue = processExecutor.executeScript(
                     loginScript, identity);
     		}else {
-    			returnValue = processExecutor.executeScript(USER_HOME+"/jbackpack/DokeanSSHFS.exe","-P",identity,userHostDir);
+    			logger.log(Level.FINEST, "DokeanSSHFS:"+USER_HOME+"\\jbackpack\\DokanSSHFS.exe"+"-P "+identity+" "+userHostDir);
+    			returnValue = processExecutor.executeNProcess(false,false,USER_HOME+"\\jbackpack\\DokanSSHFS.exe","-P",identity,userHostDir);
+    			logger.log(Level.FINEST, "DokeanSSHFS:Return");
+
+
     		}
             // restore previous log level
             logger.setLevel(level);
@@ -935,4 +1036,125 @@ public class FileTools {
     	//return true;
 
     }
+
+    /**
+     * Change testRdiffBackupServer,
+     * @param rawBackupDestination dir destination
+     * @param oldPassword the encryption password
+     * @param newPassword the encryption password
+     * @return <tt>true</tt> if mounting was successfull,
+     * <tt>false</tt> otherwise
+     */
+	public static boolean testRdiffBackupServer (String user, String host,String password,byte WRONG_PASSWORD,ProcessExecutor processExecutor){
+    	//in windows we use plink
+		int returnValue = -1;
+		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)){
+        String checkScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
+                + "set password [lindex $argv 0]" + LINE_SEPARATOR
+                + "spawn -ignore HUP rdiff-backup --test-server "
+                + user + '@' + host + "::/" + LINE_SEPARATOR
+                + "while 1 {" + LINE_SEPARATOR
+                + "    expect {" + LINE_SEPARATOR
+                + "        eof {" + LINE_SEPARATOR
+                + "            break" + LINE_SEPARATOR
+                + "        }" + LINE_SEPARATOR
+                + "        \"Permission denied*\" {" + LINE_SEPARATOR
+                + "            exit " + WRONG_PASSWORD + LINE_SEPARATOR
+                + "        }" + LINE_SEPARATOR
+                + "        \"continue connecting*\" {" + LINE_SEPARATOR
+                + "            send \"yes\r\"" + LINE_SEPARATOR
+                + "        }" + LINE_SEPARATOR
+                + "        \"" + user + '@' + host + "'s password:\" {"
+                + LINE_SEPARATOR
+                + "            send \"$password\r\"" + LINE_SEPARATOR
+                + "        }" + LINE_SEPARATOR
+                + "    }" + LINE_SEPARATOR
+                + "}" + LINE_SEPARATOR
+                + "set ret [lindex [wait] 3]" + LINE_SEPARATOR
+                + "puts \"return value: $ret\"" + LINE_SEPARATOR
+                + "exit $ret";
+
+        // set level to OFF to prevent password leaking into
+        // logfiles
+        Logger logger = Logger.getLogger(
+                ProcessExecutor.class.getName());
+        Level level = logger.getLevel();
+        logger.setLevel(Level.OFF);
+
+
+        try {
+            returnValue = processExecutor.executeScript(true, true,
+                    checkScript, (password == null) ? "" : password);
+        } catch (IOException ex) {
+            LOGGER.log(Level.SEVERE, null, ex);
+        }
+
+        // restore previous log level
+        logger.setLevel(level);
+		}else{
+
+	        try {
+	        	if (password != null)
+	        		returnValue = processExecutor.executeProcess(true, true,
+	            		USER_HOME+"\\jbackpack\\plink.exe", "-pw",password,user + '@' + host,
+	            		"\"rdiff-backup --version\"");
+	        	else
+		            returnValue = processExecutor.executeProcess(true, true,
+		            		USER_HOME+"\\jbackpack\\plink.exe -i "+USER_HOME+"\\jbackpack\\"+host+".ppk "+
+		            		user + '@' + host + " \"rdiff-backup --version\"");
+
+
+	        } catch (Exception ex1) {
+	            LOGGER.log(Level.SEVERE, null, ex1);
+	        }
+			LOGGER.log(Level.FINEST, "Version of server rdiff: {0}", returnValue);
+			//LOGGER.log(Level.INFO, "Version of server rdiff: {0}", password);
+
+		}
+        //wrongPassword = (WRONG_PASSWORD == returnValue);
+
+        return (returnValue == 0);
+	}
+
+    /**
+     * Change testselectedDirectory,
+     * @param rawBackupDestination dir destination
+     * @param oldPassword the encryption password
+     * @param newPassword the encryption password
+     * @return <tt>true</tt> if mounting was successfull,
+     * <tt>false</tt> otherwise
+     */
+	public static boolean testSelectedDirectory (String selectedDirectory,ProcessExecutor processExecutor){
+		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)){
+			return processExecutor.executeProcess("rdiff-backup",
+                "--check-destination-dir", selectedDirectory) == 0;
+		}else{
+			return processExecutor.executeProcess(USER_HOME+"\\jbackpack\\rdiff-backup.exe",
+	                "--check-destination-dir", selectedDirectory) ==0 ;
+		}
+	}
+
+    /**
+     * executes the given command
+     * @param storeStdOut if <tt>true</tt>, the program stdout will be stored
+     * in an internal list
+     * @param storeStdErr if <tt>true</tt>, the program stderr will be stored
+     * in an internal list
+     * @param commandArray the command and parameters
+     * @return the exit value of the command
+     */
+	public static int executeProcess (ProcessExecutor processExecutor,boolean storeStdOut, boolean storeStdErr,
+            String... commandArray){
+		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)){
+			return processExecutor.executeProcess(storeStdOut,storeStdErr,commandArray);
+		}else{
+			commandArray[0] = USER_HOME+"\\jbackpack\\"+commandArray[0];
+			return processExecutor.executeProcess(storeStdOut,storeStdErr,commandArray);
+
+		}
+	}
+
 }
+
+
+
