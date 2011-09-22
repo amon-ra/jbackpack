@@ -833,7 +833,7 @@ public class RdiffChooserPanel
                         // directory
                         String rdiffTimestamp =
                                 previousIncrement.getRdiffTimestamp();
-                        processExecutor.executeProcess("rdiff-backup",
+                        processExecutor.executeProcess(FileTools.rdiffbackupCommand,
                                 "--force", "--remove-older-than",
                                 rdiffTimestamp, selectedDirectory);
                         return null;
@@ -1012,7 +1012,7 @@ public class RdiffChooserPanel
         protected Boolean doInBackground() {
             long start = System.currentTimeMillis();
             returnValue = FileTools.executeProcess(processExecutor,true, true,
-                    "rdiff-backup", "--parsable-output", "-l",
+                    FileTools.rdiffbackupCommand, "--parsable-output", "-l",
                     selectedDirectory);
             long time = System.currentTimeMillis() - start;
             if (LOGGER.isLoggable(Level.FINE)) {
@@ -1042,7 +1042,7 @@ public class RdiffChooserPanel
                                 new File(directory, "rdiff-backup-data");
                         if (FileTools.canWrite(rdiffBackupDataDir)) {
                             databasePath = rdiffBackupDataDir.getPath()
-                                    + File.separatorChar + "jbackpack";
+                                    + FileTools.separatorChar + "jbackpack";
                         } else {
                             // show warning, offer using temporary directory
                             String message = BUNDLE.getString(
@@ -1058,7 +1058,7 @@ public class RdiffChooserPanel
                                     databasePath =
                                             FileTools.createTempDirectory(
                                             "jbackpack", null).getPath()
-                                            + File.separatorChar + "jbackpack";
+                                            + FileTools.separatorChar + "jbackpack";
                                 } catch (IOException ex) {
                                     LOGGER.log(Level.WARNING, null, ex);
                                     dirCheckError("Error_Database");
@@ -1130,6 +1130,7 @@ public class RdiffChooserPanel
         }
     }
 
+    //When we use windows ssh database must be local: we copy database
     private class DatabaseSyncer extends SwingWorker<Boolean, Object> {
 
         private final File backupDirectory;
@@ -1150,6 +1151,7 @@ public class RdiffChooserPanel
 
         @Override
         protected Boolean doInBackground() {
+        	LOGGER.fine("database:"+backupDirectory+":"+databasePath+":"+rdiffBackupListOutput);
             rdiffFileDatabase = RdiffFileDatabase.getInstance(
                     backupDirectory, databasePath, rdiffBackupListOutput);
             if (rdiffFileDatabase.isConnected()) {

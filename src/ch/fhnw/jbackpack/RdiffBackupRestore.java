@@ -239,7 +239,7 @@ public class RdiffBackupRestore {
 	        Logger logger = Logger.getLogger(
 	                ProcessExecutor.class.getName());
 	        Level level = logger.getLevel();
-	        logger.setLevel(Level.OFF);
+	        //logger.setLevel(Level.OFF);
 
 	        // do NOT(!) store stdOut, it very often leads to
 	        // java.lang.OutOfMemoryError: Java heap space
@@ -265,6 +265,7 @@ public class RdiffBackupRestore {
             	returnValue = processExecutor.executeProcess(true,true,commandList);
             	//        // restore previous log level
     	        logger.setLevel(level);
+
         }
         // cleanup
         deleteIncludeExcludeFiles();
@@ -667,7 +668,7 @@ public class RdiffBackupRestore {
             sourcePath += '/';
         }
         commandList.add(sourcePath);
-        commandList.add(user + '@' + host + "::" + directory);
+        commandList.add(user + '@' + host + "::" + directory.replace('\\', '/'));
 
 
         return commandList.toArray(new String[commandList.size()]);
@@ -690,7 +691,8 @@ public class RdiffBackupRestore {
 
         List<String> commandList = new ArrayList<String>();
 
-        commandList.add("rdiff-backup");
+        commandList.add(FileTools.rdiffbackupCommand);
+        //else commandList.add(FileTools.rdiffbackupCommand);
 
         commandList.add("--terminal-verbosity");
         commandList.add("7");
@@ -718,8 +720,24 @@ public class RdiffBackupRestore {
     private File getCurrentMirror(String backupDst) {
         File rdiffBackupDataDirectory = new File(
                 backupDst + File.separator + "rdiff-backup-data");
+        
         if (!rdiffBackupDataDirectory.exists()) {
-            return null;
+        	rdiffBackupDataDirectory.mkdir();
+        	LOGGER.fine("getCurrentMirror not exists: "+backupDst+" : "+rdiffBackupDataDirectory.getPath());
+	        for (long i=FileTools.mountWaitTime;i>0;i=i-FileTools.mountStep){
+    			if (!rdiffBackupDataDirectory.exists()){    			
+					try {
+						//logger.log(Level.FINE, "DokeanSSHFS:Return: {0}",returnValue); 
+						Thread.sleep(FileTools.mountStep);
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+    			}
+	        }
+        	LOGGER.severe("getCurrentMirror not exists: "+backupDst+" : "+rdiffBackupDataDirectory.getPath());
+        	if (!rdiffBackupDataDirectory.exists())
+        		return null;
         }
         File[] currentBackup = rdiffBackupDataDirectory.listFiles(
                 new FilenameFilter() {
@@ -728,6 +746,12 @@ public class RdiffBackupRestore {
                         return name.matches("current_mirror.*");
                     }
                 });
+        /*
+        if (currentBackup == null)
+        {
+        	
+        }
+        */
         return (currentBackup.length == 0 ? null : currentBackup[0]);
     }
 

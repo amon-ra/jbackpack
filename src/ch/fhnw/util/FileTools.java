@@ -20,8 +20,12 @@ package ch.fhnw.util;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.text.MessageFormat;
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -48,11 +52,17 @@ public class FileTools {
     private final static NumberFormat NUMBER_FORMAT =
             NumberFormat.getInstance();
     private static final long UNKNOWN_SPACE = 1073741824000L;
-    public static final String USER_HOME = System.getProperty("user.home");
-    public static final String unitWinCaps = "N:";
-    public static final String unitWin = "n:";
+    public static final String unitWinCaps = "N:\\";
+    public static final String unitWin = "n:\\"; //File.separatorChar
+    public static final char separatorChar = File.separatorChar;
+    public static final String separator = File.separator;
     public static final int SSHFS = 2;
     public static final int SMBFS = 1;
+    public static long mountWaitTime = 30000;
+    public static long mountStep = 1000;
+    public static String USER_HOME = System.getProperty("user.home");
+    public static String TEMP_DIR = System.getProperty("java.io.tmpdir");
+    public static final String rdiffbackupCommand = (CurrentOperatingSystem.OS == OperatingSystem.Windows) ? USER_HOME+"\\jbackpack\\rdiff-backup.exe" : "rdiff-backup";
 
     /**
      * checks if a directory is writable
@@ -502,7 +512,7 @@ public class FileTools {
      * @param type 1 sshfs, 2 smbfs
      * @return <tt>true</tt>, if umounting succeeded, <tt>false</tt> otherwise
      */
-    public static boolean umount(String mountPoint,int type,String password,boolean delete) {
+    public static boolean umount(String mountPoint,int type,String password,boolean delete,ProcessExecutor oldExecutor) {
         ProcessExecutor processExecutor = new ProcessExecutor();
         int returnValue = -1;
         boolean success = false;
@@ -511,8 +521,11 @@ public class FileTools {
         	case Windows:
         	   if (type == SMBFS) returnValue = processExecutor.executeProcess(
                        "net", "use", mountPoint, "/delete");
-        	   else if (type == SSHFS) returnValue = processExecutor.executeProcess(
+        	   else if (type == SSHFS){
+        		   returnValue = processExecutor.executeProcess(
                         USER_HOME+"\\jbackpack\\dokanctl.exe", "/u", unitWin.substring(0, 1));
+        		   if (oldExecutor != null) oldExecutor.destroy();
+        	   }
                 success = (returnValue == 0);
                 if (!success) {
                     LOGGER.log(Level.WARNING,
@@ -714,7 +727,6 @@ public class FileTools {
      */
     public static File createMountPoint(File directory, String name)
             throws IOException {
-    	if ((CurrentOperatingSystem.OS == OperatingSystem.Windows)) return new File(unitWin);
         File mountPoint = new File(directory, name);
         if (mountPoint.exists()) {
             if (isMountPoint(mountPoint.getPath())
@@ -952,10 +964,14 @@ public class FileTools {
      * @return <tt>true</tt> if mounting was successfull,
      * <tt>false</tt> otherwise
      */
-    public static boolean mountSSHFS (String user,String host,String baseDir, String mountPoint, String identity)
+    public static boolean mountSSHFS (ProcessExecutor processExecutor,String user,String host,String baseDir, String mountName, String identity)
     		 throws IOException {
-    	ProcessExecutor processExecutor = new ProcessExecutor();
+    	
     	String userHostDir = user + "@" + host + ':';
+    	String mountPoint;
+    	if (CurrentOperatingSystem.OS != OperatingSystem.Windows)
+    		mountPoint = createMountPoint(new File(mountName), host).getPath();
+    	else mountPoint = unitWin;
     	int returnValue;
         if (!baseDir.isEmpty()) {
             if (!baseDir.startsWith("/")) {
@@ -980,6 +996,22 @@ public class FileTools {
 		        returnValue = processExecutor.executeNProcess(true,
 		                true, USER_HOME+"\\jbackpack\\DokanSSHFS.exe", // "-d",mountPoint,
 		                "-i",USER_HOME+"\\jbackpack\\"+host+".ppk", userHostDir);
+		        for (long i=mountWaitTime;i>0;i=i-mountStep){
+	    			if (!(new File(unitWin)).exists()){    			
+						try {
+							Thread.sleep(mountStep);
+						} catch (InterruptedException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+	    			}
+		        }
+    			if (!(new File(unitWin)).exists()){
+    				//TEst if exist drive and processExecutor.destroy();
+    				umount(mountPoint, FileTools.SSHFS, "",true,processExecutor);
+    				returnValue=1;
+    			}
+			        
 		        return (returnValue == 0);
     		}
     	}
@@ -1021,15 +1053,33 @@ public class FileTools {
             	// TODO: the loginScript blocks when storing any output...
             	returnValue = processExecutor.executeScript(
                     loginScript, identity);
-    		}else {
-    			logger.log(Level.FINEST, "DokeanSSHFS:"+USER_HOME+"\\jbackpack\\DokanSSHFS.exe"+"-P "+identity+" "+userHostDir);
+                // restore previous log level
+                logger.setLevel(level);
+    		}else {   			
     			returnValue = processExecutor.executeNProcess(false,false,USER_HOME+"\\jbackpack\\DokanSSHFS.exe","-P",identity,userHostDir);
-    			logger.log(Level.FINEST, "DokeanSSHFS:Return");
-
+                // restore previous log level
+                logger.setLevel(level);
+                //ogger.log(Level.FINE, "DokeanSSHFS:"+USER_HOME+"\\jbackpack\\DokanSSHFS.exe"+"-P "+identity+" "+userHostDir);
+		        for (long i=mountWaitTime;i>0;i=i-mountStep){
+	    			if (!(new File(unitWin)).exists()){    			
+						try {
+							//logger.log(Level.FINE, "DokeanSSHFS:Return: {0}",returnValue); 
+							Thread.sleep(mountStep);
+						} catch (InterruptedException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+	    			}
+		        }
+    			if (!(new File(unitWin)).exists()){
+    				//TEst if exist drive and processExecutor.destroy();
+    				umount(mountPoint, FileTools.SSHFS, "",true,processExecutor);
+    				returnValue=1;
+    			}
+    			logger.log(Level.FINE, "DokeanSSHFS:Return: {0}",returnValue); 
 
     		}
-            // restore previous log level
-            logger.setLevel(level);
+
 
             return (returnValue == 0);
     	}
@@ -1145,6 +1195,8 @@ public class FileTools {
      */
 	public static int executeProcess (ProcessExecutor processExecutor,boolean storeStdOut, boolean storeStdErr,
             String... commandArray){
+		return processExecutor.executeProcess(storeStdOut,storeStdErr,commandArray);
+		/*
 		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)){
 			return processExecutor.executeProcess(storeStdOut,storeStdErr,commandArray);
 		}else{
@@ -1152,7 +1204,60 @@ public class FileTools {
 			return processExecutor.executeProcess(storeStdOut,storeStdErr,commandArray);
 
 		}
+		*/
 	}
+
+    /**
+     * copy a directory If targetLocation does not exist, it will be created.
+     * @param sourceLocation
+     * @param targetLocation
+     * @return none
+     */ 
+    public static void copyDirectory(File sourceLocation , File targetLocation)
+    throws IOException {     
+        if (sourceLocation.isDirectory()) {
+            if (!targetLocation.exists()) {
+                targetLocation.mkdir();
+            }
+            
+            String[] children = sourceLocation.list();
+            for (int i=0; i<children.length; i++) {
+                copyDirectory(new File(sourceLocation, children[i]),
+                        new File(targetLocation, children[i]));
+            }
+        } else {
+            
+            InputStream in = new FileInputStream(sourceLocation);
+            OutputStream out = new FileOutputStream(targetLocation);
+            
+            // Copy the bits from instream to outstream
+            byte[] buf = new byte[1024];
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+            in.close();
+            out.close();
+        }
+    }	
+    
+	 // Deletes all files and subdirectories under dir.
+	 // Returns true if all deletions were successful.
+	 // If a deletion fails, the method stops attempting to delete and returns false.
+	 public static boolean deleteDir(File dir) {
+	     if (dir.isDirectory()) {
+	         String[] children = dir.list();
+	         for (int i=0; i<children.length; i++) {
+	             boolean success = deleteDir(new File(dir, children[i]));
+	             if (!success) {
+	                 return false;
+	             }
+	         }
+	     }
+	
+	     // The directory is now empty so delete it
+	     return dir.delete();
+	 }
 
 }
 

@@ -19,6 +19,7 @@
 package ch.fhnw.jbackpack;
 
 import ch.fhnw.util.CurrentOperatingSystem;
+import ch.fhnw.util.FileTools;
 import ch.fhnw.util.ProcessExecutor;
 import java.awt.SplashScreen;
 import java.text.DateFormat;
@@ -183,7 +184,7 @@ public class JBackpack {
         try{
 
         	returnValue = processExecutor.executeProcess(
-                "rdiff-backup", "--version");
+        			FileTools.rdiffbackupCommand, "--version");
         } catch (Exception ex) {
         	Logger.getLogger(JBackpack.class.getName()).log(Level.INFO,
 			"Error trying others(posibly rdiff-backup not found): \"rdiff-backup --version\": {0}",

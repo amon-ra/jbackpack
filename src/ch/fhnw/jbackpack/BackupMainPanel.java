@@ -58,6 +58,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.ResourceBundle;
 import java.util.TimeZone;
 import java.util.concurrent.CancellationException;
@@ -296,7 +297,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
     private boolean plainBackupWarning;
     private boolean showReminder;
     private int reminderTimeout;
-
+    private SshLoginSwingWorker sshLoginSwingWorker;
+    
     /** Creates new form BackupMainPanel */
     public BackupMainPanel() {
 
@@ -444,6 +446,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
      */
     public void setParentFrame(Frame parentFrame) {
         this.parentFrame = parentFrame;
+        rdiffChooserPanel.setParentWindow(parentFrame);
         parentFrame.addWindowListener(new java.awt.event.WindowAdapter() {
             public void windowClosing(WindowEvent winEvt) {
                 // Perhaps ask user if they want to save any unsaved files first.
@@ -455,7 +458,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                             smbSudoPasswordField.getPassword());
                     try{
                     mountPoint = getSmbfsMountPoint();
-                    FileTools.umount(mountPoint,FileTools.SMBFS,password,true);
+                    FileTools.umount(mountPoint,FileTools.SMBFS,password,true,null);
                     }catch(Exception ex){
                     	LOGGER.warning("get smb mountpoint"+ex);
                     }
@@ -463,14 +466,14 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 if (sshfsMounted) {
                 	try{
         	        	mountPoint=getSshfsMountPoint();
-        	        	FileTools.umount(mountPoint, FileTools.SSHFS, "",true);
+        	        	FileTools.umount(mountPoint, FileTools.SSHFS, "",true,sshLoginSwingWorker.processExecutor);       	
         	        }catch(Exception ex){
         	        	LOGGER.warning("get ssh mountpoint"+ex);
         	        }
                 }
             }
         });
-        rdiffChooserPanel.setParentWindow(parentFrame);
+
     }
 
     /**
@@ -752,6 +755,13 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 return false;
             }
             String remoteStorage = sshStorageTextField.getText();
+            /*
+            if (CurrentOperatingSystem.OS == OperatingSystem.Windows)
+            {
+            	remoteStorage = remoteStorage.replace('\\', '/');
+            	sshStorageTextField.setText(remoteStorage);
+            }
+            */
             if (remoteStorage.length() == 0) {
                 String directoriesTabName = BUNDLE.getString(
                         "BackupMainPanel.directoriesPanel.TabConstraints.tabTitle");
@@ -856,7 +866,21 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
             showErrorPanels("Error_Source_Equals_Destination");
             return false;
         }
-
+        /*
+        // rdiff-backup checks
+        File rdiffBackupDataDir =
+                new File(destinationDirectory, "rdiff-backup-data");
+        if (rdiffBackupDataDir.exists()
+                && (!rdiffBackupDataDir.canRead()
+                || !FileTools.canWrite(rdiffBackupDataDir))) {
+            if (LOGGER.isLoggable(Level.INFO)) {
+                LOGGER.log(Level.INFO, "can not access {0}{1}rdiff-backup-data",
+                        new Object[]{destinationDirectory, File.separatorChar});
+            }
+            showErrorPanels("Error_Accessing_Backup");
+            return false;
+        }
+        */
         commonDestinationOK = true;
         return true;
     }
@@ -2766,7 +2790,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 // umount
                 String mountPoint = getSshfsMountPoint();
                 if ((mountPoint != null)
-                        && FileTools.umountFUSE(new File(mountPoint), true)) {
+                        && FileTools.umount(mountPoint,FileTools.SSHFS,"", true,sshLoginSwingWorker.processExecutor)) {
                     setSshMounted(false);
                     destinationChanged();
                     sshPasswordField.requestFocusInWindow();
@@ -3323,7 +3347,14 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
             selectedPath = mountPoint
                     + (selectedPath.startsWith(File.separator)
                     ? "" : File.separator) + selectedPath;
-            File mountDir = new File(mountPoint);
+            File mountDir= new File(mountPoint);
+            /*
+            if (CurrentOperatingSystem.OS == OperatingSystem.Windows && sshRadioButton.isSelected()) 
+            {
+            	selectedPath = selectedPath.replace('/','\\');
+            	mountDir = new File(mountPoint.replace('/','\\'));
+            }
+            */
             ChrootFileSystemView chrootFileSystemView =
                     new ChrootFileSystemView(mountDir, server);
             SelectBackupDirectoryDialog dialog =
@@ -3348,10 +3379,17 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
 	                            JOptionPane.ERROR_MESSAGE);
 	                }
                 }else{
-                	if (newPath.contains(FileTools.unitWin) || newPath.contains(FileTools.unitWinCaps)){
+                	/*
+                	if (sshRadioButton.isSelected()){
+                		newPath = newPath.replace('\\', '/');             		
+                	}
+                	*/
+                	if (newPath.contains(FileTools.unitWin) || newPath.contains(FileTools.unitWinCaps))
+                	{
                 		newPath = newPath.substring(mountPoint.length());
                 		directoryTextField.setText(newPath);
-                	}else {
+                	}
+                	else {
                     String errorMessage = BUNDLE.getString(
                             "Error_Selected_Directory_Not_On_Server");
                     errorMessage = MessageFormat.format(
@@ -3382,7 +3420,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 Increment lastGoodIncrement =
                         increments.get(autoDeleteCount - 1);
                 String rdiffTimestamp = lastGoodIncrement.getRdiffTimestamp();
-                processExecutor.executeProcess("rdiff-backup",
+                processExecutor.executeProcess(FileTools.rdiffbackupCommand,
                         "--force", "--remove-older-than", rdiffTimestamp,
                         destinationDirectory.getPath());
             }
@@ -3410,7 +3448,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                             "unsupported age unit {0}", selectedIndex);
                     return;
             }
-            processExecutor.executeProcess("rdiff-backup",
+            processExecutor.executeProcess(FileTools.rdiffbackupCommand,
                     "--force", "--remove-older-than", age + unit,
                     destinationDirectory.getPath());
         }
@@ -3456,7 +3494,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                                 warningMessage, BUNDLE.getString("Warning"),
                                 JOptionPane.WARNING_MESSAGE);
                     }
-                    processExecutor.executeProcess("rdiff-backup",
+                    processExecutor.executeProcess(FileTools.rdiffbackupCommand,
                             "--force", "--remove-older-than", rdiffTimestamp,
                             destinationDirectory.getPath());
                     break;
@@ -3507,6 +3545,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         boolean customDir = customTempDirRadioButton.isSelected();
         if (!customDir) {
             tempDirTextField.setText(System.getProperty("java.io.tmpdir"));
+            FileTools.TEMP_DIR=System.getProperty("java.io.tmpdir");
         }
         tempDirTextField.setEditable(customDir);
         tempDirBrowseButton.setEnabled(customDir);
@@ -3671,7 +3710,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         	case Windows:
                 // expect is necessary for both sshfs and encfs password changes
                     returnValue = processExecutor.executeProcess(
-                            USER_HOME+"/jbackpack/DokanSSHFS.exe", "--version");
+                            USER_HOME+"\\jbackpack\\DokanSSHFS.exe", "--version");
                     if (returnValue != 0) {
                         JEditorPane editorPane = new JEditorPane("text/html",
                                 BUNDLE.getString("Warning_No_SSHFS"));
@@ -3688,11 +3727,11 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                     // encryption checks
 
                     //returnValue = processExecutor.executeProcess(
-                    //		USER_HOME+"/jbackpack/encfs.exe", "--version");
+                    //	USER_HOME+"\\jbackpack\\encfs.exe", "--version");
                     returnValue = 1; //not suported yet
                     if (returnValue == 0) {
                         returnValue = processExecutor.executeProcess(
-                        		USER_HOME+"/jbackpack/rsync.exe", "--version");
+                        		USER_HOME+"\\jbackpack\\rsync.exe", "--version");
                         if (returnValue != 0) {
                             JOptionPane.showMessageDialog(parentFrame,
                                     BUNDLE.getString("Warning_No_Rsync"),
@@ -3711,9 +3750,9 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                         Color background = UIManager.getDefaults().getColor(
                                 "Panel.background");
                         editorPane.setBackground(background);
-                        JOptionPane.showMessageDialog(parentFrame,
-                                editorPane, BUNDLE.getString("Warning"),
-                                JOptionPane.WARNING_MESSAGE);
+                        //JOptionPane.showMessageDialog(parentFrame,
+                        //        editorPane, BUNDLE.getString("Warning"),
+                        //       JOptionPane.WARNING_MESSAGE);
                         disableEncfs();
                         encryptionButton.setToolTipText(
                                 BUNDLE.getString("Warning_No_ENCFS"));
@@ -4166,7 +4205,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         sshLoginProgressBar.setIndeterminate(true);
 
         // execute the blocking SSH login process in a background thread
-        SshLoginSwingWorker sshLoginSwingWorker =
+        sshLoginSwingWorker =
                 new SshLoginSwingWorker(host, user, switchToBackup);
         sshLoginSwingWorker.execute();
     }
@@ -4383,31 +4422,32 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         private final String host;
         private final String user;
         private final boolean switchToBackup;
-
+        public ProcessExecutor processExecutor;
+        
         public SshLoginSwingWorker(String host, String user,
                 boolean switchToBackup) {
             this.host = host;
             this.user = user;
             this.switchToBackup = switchToBackup;
+            this.processExecutor = new ProcessExecutor();
         }
 
         @Override
         protected Boolean doInBackground() {
             try {
-                String mountPoint = FileTools.createMountPoint(
-                        new File(USER_HOME+"/.jbackpack/"), host).getPath();
+                String mountPoint = USER_HOME+"/.jbackpack/";
 
                 String baseDir = sshBaseDirTextField.getText();
 
 
                 if (sshPublicKeyRadioButton.isSelected()) {
-                	return FileTools.mountSSHFS(user,host,baseDir,mountPoint,null);
+                	return FileTools.mountSSHFS(processExecutor,user,host,baseDir,mountPoint,null);
                 } else {
 
                     // authentication with username and password
                     String password = new String(
                             sshPasswordField.getPassword());
-                    return FileTools.mountSSHFS(user,host,baseDir,mountPoint,password);
+                    return FileTools.mountSSHFS(processExecutor,user,host,baseDir,mountPoint,password);
 
                 }
             } catch (Exception exception) {
@@ -4623,9 +4663,13 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
 
                     long time = now - start;
                     String timeString = timeFormat.format(new Date(time));
-                    Map<String, String> backupSessionStatistics =
-                            rdiffBackupRestore.getBackupSessionStatistics(
-                            destinationPath);
+                    Map<String, String> backupSessionStatistics;
+                    //cycnet
+                    //if (sshRadioButton.isSelected() && CurrentOperatingSystem.OS == CurrentOperatingSystem.OS.Windows)
+                    //	backupSessionStatistics = rdiffBackupRestore.getBackupSessionStatistics(
+                    //            destinationPath.replace('/', '\\'));
+                    backupSessionStatistics =
+                            rdiffBackupRestore.getBackupSessionStatistics(destinationPath);
                     fillStatisticsTextField(
                             backupSessionStatistics, timeString);
                     showCard(BackupMainPanel.this,
@@ -4691,7 +4735,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                     sshStorage = sshBaseDirectory + '/'
                             + sshStorageTextField.getText();
                 }
-                return rdiffBackupRestore.backupViaSSH(sourceDirectory,
+
+                boolean ret = rdiffBackupRestore.backupViaSSH(sourceDirectory,
                         sshUserNameTextField.getText(),
                         sshServerTextField.getText(), sshStorage,
                         sshPassword, tempDirTextField.getText(),
@@ -4704,6 +4749,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                         exclude && excludeOtherFileSystemsCheckBox.isSelected(),
                         exclude && excludeSocketsCheckBox.isSelected(),
                         exclude && excludeSymlinksCheckBox.isSelected());
+    	        return ret;
             } else {
                 return rdiffBackupRestore.backupViaFileSystem(
                         sourceDirectory, destinationDirectory,

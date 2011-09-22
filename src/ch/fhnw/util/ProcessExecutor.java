@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+
 /**
  * A class that provides an easy interface for executing processes
  * @author Ronny Standtke <Ronny.Standtke@gmx.net>
@@ -257,7 +258,11 @@ public class ProcessExecutor {
                     "ERROR", stdErr, stdAll, storeStdErr);
             stdoutReader.start();
             stderrReader.start();
-            int exitValue = 0 ;//process.waitFor();
+            int exitValue = 0 ;
+            //process.waitFor();
+            
+            Thread.sleep(FileTools.mountStep);
+            //process.wait(FileTools.mountWaitTime);
             LOGGER.log(Level.FINE, "exitValue = {0}", exitValue);
             // wait for readers to finish...
             if (storeStdOut) {
@@ -266,6 +271,7 @@ public class ProcessExecutor {
             if (storeStdErr) {
                 stderrReader.join();
             }
+
             return exitValue;
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, null, e);

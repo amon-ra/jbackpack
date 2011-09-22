@@ -27,6 +27,8 @@ import java.util.Date;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import ch.fhnw.util.FileTools;
+
 /**
  * The increment of a rdiff-backup
  * @author Ronny Standtke <ronny.standtke@fhnw.ch>
@@ -203,7 +205,7 @@ public class Increment {
             String backupDirectory, final String prefix) {
 
         File rdiffBackupDataDirectory = new File(backupDirectory
-                + File.separatorChar + "rdiff-backup-data");
+                + FileTools.separatorChar + "rdiff-backup-data");
 
         File[] metaFiles = rdiffBackupDataDirectory.listFiles(
                 new FilenameFilter() {

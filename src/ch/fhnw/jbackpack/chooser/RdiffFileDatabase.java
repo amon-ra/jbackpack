@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -187,6 +188,8 @@ public class RdiffFileDatabase {
     private boolean connectionSucceeded;
     private boolean anotherInstanceRunning;
     private List<RdiffTimestamp> fileSystemTimestamps;
+    private String tmpDir;
+    private String destDir;
 
     /**
      * Creates a new RdiffFileDatabase
@@ -209,7 +212,7 @@ public class RdiffFileDatabase {
      */
     public static RdiffFileDatabase getInstance(File backupDirectory) {
         ProcessExecutor processExecutor = new ProcessExecutor();
-        processExecutor.executeProcess(true, true, "rdiff-backup",
+        processExecutor.executeProcess(true, true, FileTools.rdiffbackupCommand,
                 "--parsable-output", "-l", backupDirectory.getPath());
         List<String> output = processExecutor.getStdOutList();
         String databasePath = backupDirectory.getPath() + File.separatorChar
@@ -230,12 +233,25 @@ public class RdiffFileDatabase {
         System.setProperty("derby.stream.error.method",
                 "ch.fhnw.jbackpack.chooser.RdiffFileDatabase.disableDerbyLogFile");
         String driver = "org.apache.derby.jdbc.EmbeddedDriver";
+        destDir = databasePath;
+        tmpDir = FileTools.TEMP_DIR+"\\jbackpack-derby"+(new Random().nextInt(9999));
         String connectionURL = "jdbc:derby:" + databasePath + ";create=true";
-
+        if ((databasePath.contains(FileTools.unitWin) || databasePath.contains(FileTools.unitWinCaps) )) {
+        	connectionURL = "jdbc:derby:" + tmpDir + ";create=true";
+        	if ((new File(databasePath)).exists()){
+            	try{
+            		FileTools.copyDirectory( new File(databasePath),new File(tmpDir));
+            		//FileTools.deleteDir(new File(tmpDir));
+            	}catch (IOException ex){
+                	LOGGER.log(Level.SEVERE, null, ex);
+            	}        		
+        	}
+        }
+            
         try {
             Class.forName(driver).newInstance();
 
-            LOGGER.log(Level.INFO, "connecting to database {0}", databasePath);
+            LOGGER.log(Level.INFO, "connecting to database {0}", connectionURL);
 
             connection = DriverManager.getConnection(connectionURL);
 
@@ -723,6 +739,16 @@ public class RdiffFileDatabase {
                 LOGGER.log(Level.WARNING,
                         "Derby did not shut down normally", ex);
             }
+        } finally{
+            if ((destDir.contains(FileTools.unitWin) || destDir.contains(FileTools.unitWinCaps) )) {           	
+                	try{
+                		FileTools.copyDirectory(new File(tmpDir),new File(destDir));
+                		FileTools.deleteDir(new File(tmpDir));
+                	}catch (IOException ex){
+                    	LOGGER.log(Level.SEVERE, null, ex);
+                	}        		
+            	
+            }        	
         }
     }
 
