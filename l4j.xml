@@ -1,8 +1,8 @@
 <launch4jConfig>
   <dontWrapJar>false</dontWrapJar>
   <headerType>gui</headerType>
-  <jar>dist/JBackpack.jar</jar>
-  <outfile>dist/JBackpack.exe</outfile>
+  <jar>dist\JBackpack.jar</jar>
+  <outfile>dist\JBackpack.exe</outfile>
   <errTitle>JBackpack</errTitle>
   <cmdLine></cmdLine>
   <chdir>.</chdir>
@@ -12,10 +12,10 @@
   <customProcName>true</customProcName>
   <stayAlive>false</stayAlive>
   <manifest></manifest>
-  <icon>icon.png</icon>
+  <icon>icon.ico</icon>
   <jre>
     <path></path>
-    <minVersion>1.4.0</minVersion>
+    <minVersion>1.6.0_11</minVersion>
     <maxVersion></maxVersion>
     <jdkPreference>preferJre</jdkPreference>
   </jre>
