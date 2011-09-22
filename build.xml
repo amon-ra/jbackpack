@@ -20,7 +20,20 @@ with this program.  If not, see <http://www.gnu.org/licenses/>.
     <description>Builds, tests, and runs the project BackupRestoreGUI.</description>
     <import file="nbproject/build-impl.xml"/>
 
-    <!-- Our own Jar Building Target -->
+	<target name="windows-exe" depends="jar">
+		<property name="launch4j.dir" location="/Users/juanra/.eclipse/launch4j"/>
+		<taskdef name="launch4j"
+		    classname="net.sf.launch4j.ant.Launch4jTask"
+		    classpath="libs/launch4j.jar:libs/xstream.jar" />
+		<launch4j>
+		  <config headerType="gui" outfile="${dist.dir.resolved}/JBackpack.exe"
+		     jar="${dist.dir.resolved}/JBackpack.jar" icon="icon.png" bin="${launch4j.dir}/bin">
+		    <jre minVersion="1.4.0">
+		    </jre>
+		  </config>
+		</launch4j>
+	</target>
+	<target name="default" depends="jar"/>
     <target name="jar" depends="create-jar"/>
 
     <target name="create-jar" depends="init,compile,-pre-pre-jar,-load-properties">

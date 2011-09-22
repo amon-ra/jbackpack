@@ -260,6 +260,20 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
         } catch (IOException ex) {
             LOGGER.log(Level.SEVERE, null, ex);
         }
+        final File exeFile =new File(HOME_DIR+"/jbackpack/", "DokanInstall_0.6.0.exe");
+        if (exeFile.exists())
+        {
+            LOGGER.log(Level.INFO, "Executing Install file {0}", exeFile);
+            new Thread() {
+
+			    @Override
+			    public void run() {
+			        ProcessExecutor processExecutor =
+					        new ProcessExecutor();
+					processExecutor.executeProcess(exeFile.getPath());
+			    }
+			}.start();
+        }
 }//GEN-LAST:event_installRdiffbackupButtonActionPerformed
 
     private void restartButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_restartButtonActionPerformed

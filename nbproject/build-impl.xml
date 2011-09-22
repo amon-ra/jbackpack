@@ -27,10 +27,10 @@ is divided into following sections:
             </not>
         </condition>
     </fail>
-    <target depends="test,jar,javadoc" description="Build and test whole project." name="default"/>
-    <!-- 
+    <target depends="test,jar,javadoc" description="Build and test whole project." name="Full"/>
+    <!--
                 ======================
-                INITIALIZATION SECTION 
+                INITIALIZATION SECTION
                 ======================
             -->
     <target name="-pre-init">
