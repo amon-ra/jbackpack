@@ -100,7 +100,7 @@ with this program.  If not, see <http://www.gnu.org/licenses/>.
         <delete file="dist/JBackpack-${JBackpack_Version}.dmg"/>
         <echo>creating dmg...</echo>
         <exec dir="dist" executable="hdiutil">
-            <arg line="create -sectors 20000 -fs HFS+ -volname
+            <arg line="create -sectors 90000 -fs HFS+ -volname
             JBackpack JBackpack-${JBackpack_Version}"/>
         </exec>
         <echo>mounting dmg...</echo>
@@ -121,7 +121,7 @@ with this program.  If not, see <http://www.gnu.org/licenses/>.
         </exec>
         <echo>copying libraries...</echo>
         <exec executable="cp">
-            <arg line="deps/mac/EncFS.pkg /Volumes/JBackpack"/>
+            <arg line="-a deps/mac/EncFS.pkg /Volumes/JBackpack"/>
         </exec>
         <echo>copying libraries...</echo>
         <exec executable="cp">
