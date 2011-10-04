@@ -23,6 +23,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -62,6 +63,8 @@ public class FileTools {
     public static long mountStep = 1000;
     public static String USER_HOME = System.getProperty("user.home");
     public static String TEMP_DIR = System.getProperty("java.io.tmpdir");
+    public static boolean DO_VSS = (CurrentOperatingSystem.OS == OperatingSystem.Windows);
+    public static String mapdrive = "m:";
     public static final String rdiffbackupCommand = (CurrentOperatingSystem.OS == OperatingSystem.Windows) ? USER_HOME+"\\jbackpack\\rdiff-backup.exe" : "rdiff-backup";
 
     /**
@@ -1257,6 +1260,200 @@ public class FileTools {
 	
 	     // The directory is now empty so delete it
 	     return dir.delete();
+	 }
+	 
+	 public static int runBackup (ProcessExecutor processExecutor,String source,List<String> commandList)
+			 throws IOException {
+		 int returnValue=1;
+
+	        // do NOT(!) store stdOut, it very often leads to:
+	        // java.lang.OutOfMemoryError: Java heap space
+		 	if (DO_VSS)
+		 	{
+				 StringBuilder stringBuilder = new StringBuilder();
+				    for (String command : commandList) {
+				        stringBuilder.append(command);
+				        stringBuilder.append(' ');
+				    }
+				    //Dividir en 2
+				 String script= "@ECHO off\r\n" + 
+					 		"REM ---- Change current drive ----\r\n" + 
+					 		"REM We need ssed.exe,dosdev.exe\r\n" + 
+					 		"REM Usage: vss.bat runfrom temp mapdrive: copydrive:\r\n" + 
+					 		"REM For reasons that are undocumented - but probably related to the location of\r\n" + 
+					 		"REM snapshot data - vshadow must be run with a local, or the snapshot source,\r\n" + 
+					 		"REM drive as the current drive on the command line. So we must switch to source\r\n" + 
+					 		"REM drive and ensure that all calls to external programs are mapped back to the\r\n" + 
+					 		"REM original location  - which may for instance be on a network share\r\n" + 
+					 		"SET runfrom="+USER_HOME+"\\jbackpack\r\n" + 
+					 		"SET vss=y\r\n" + 
+					 		"SET TEMP=" +TEMP_DIR + "\r\n" +
+					 		"SET mapdrive="+mapdrive+"\r\n" + 
+					 		"SET unit="+source.substring(0,2)+"\r\n" + 
+					 		"\r\n" + 
+					 		"\r\n" + 
+					 		"ECHO ------------------------------------VSS--------------------------------------------------\r\n" + 
+					 		"REM ----------\r\n" + 
+					 		"REM Determine Windows version WINVER 5.0=2000, 5.1=XP, 5.2=2003, 6.0=Vista, 6.1=7/2008\r\n" + 
+					 		"FOR /F \"tokens=2* delims=[]\" %%A IN ('VER') DO FOR /F \"tokens=2,3 delims=. \" %%B IN (\"%%A\") DO SET WINVER=%%B.%%C\r\n" + 
+					 		"REM Determine Windows 32-bit (x86) or 64-bit (x64) WINBIT\r\n" + 
+					 		"SET WINBIT=x86&&IF \"%PROCESSOR_ARCHITECTURE%\" == \"AMD64\" (SET WINBIT=x64) ELSE IF \"%PROCESSOR_ARCHITEW6432%\" == \"AMD64\" SET WINBIT=x64\r\n" + 
+					 		"IF %WINVER% LSS 5.1 (\r\n" + 
+					 		"	ECHO Sorry, timedicer cannot run under this version of Windows %WINVER%-%WINBIT%.\r\n" + 
+					 		"	SET el=12\r\n" + 
+					 		"	GOTO :endd\r\n" + 
+					 		")\r\n" + 
+					 		"REM Set VSHADOWVER appropriately for the vshadow-n-[bit].exe programs\r\n" + 
+					 		"IF %WINVER%==5.1 SET VSHADOWVER=xp&&SET WINBIT=x86\r\n" + 
+					 		"IF %WINVER%==5.2 SET VSHADOWVER=2003&&SET WINBIT=x86\r\n" + 
+					 		"IF %WINVER%==6.0 SET VSHADOWVER=2008\r\n" + 
+					 		"IF %WINVER%==6.1 SET VSHADOWVER=2008-r2\r\n" + 
+					 		"\r\n" + 
+					 		"\r\n" + 
+					 		"REM -------------------------------------------------------------------------------\r\n" + 
+					 		"	 ECHO About to check for vshadow-%VSHADOWVER%-%WINBIT%.exe\r\n" + 
+					 		"     SET el=0\r\n" + 
+					 		"	REM CALL :file_check vshadow-%VSHADOWVER%-%WINBIT%.exe http://edgylogic.com/blog/vshadow-exe-versions %el%\r\n" + 
+					 		"	REM IF ERRORLEVEL 1 SET el=5&&GOTO :endd\r\n" + 
+					 		"	 ECHO About to check for dosdev.exe\r\n" + 
+					 		"    REM CALL :file_check dosdev.exe http://www.ltr-data.se/files/dosdev.zip %el%\r\n" + 
+					 		"	REM IF ERRORLEVEL 1 SET el=5&&GOTO :endd\r\n" + 
+					 		"	IF %el% GEQ 1 (\r\n" + 
+					 		"		ECHO Backup will continue but with Volume Shadow Services disabled.\r\n" + 
+					 		"		SET vss=n\r\n" + 
+					 		"		SET el=0\r\n" + 
+					 		"        GOTO :endd\r\n" + 
+					 		"	)\r\n" + 
+					 		"IF /I \"%vss%\" == \"y\" (\r\n" + 
+					 		"	REM allowed status for shadow writers is 1 (stable) or 5 (waiting for completion) - see http://msdn.microsoft.com/en-us/library/aa384979%28VS.85%29.aspx\r\n" + 
+					 		"    SET VSSNOTREADY = 0\r\n" + 
+					 		"	\"%runfrom%\\vshadow-%VSHADOWVER%-%WINBIT%.exe\" -ws|\"%runfrom%\\ssed.exe\" -n -e \"/Status: [1|5]/p\"|\"%runfrom%\\ssed.exe\" -n \"$=\">%TEMP%\\TimeDicer-vsswriters_status.txt\r\n" + 
+					 		"	FOR /F \"usebackq\" %%A IN ('%TEMP%\\TimeDicer-vsswriters_status.txt') DO set VSSNOTREADY=%%~zA\r\n" + 
+					 		"	IF %VSSNOTREADY LEQ 0 (\r\n" + 
+					 		"		ECHO Volume Shadow Writer[s] not ready, aborting...\r\n" + 
+					 		"		SET el=3\r\n" + 
+					 		"		GOTO :endd\r\n" + 
+					 		"	)\r\n" + 
+					 		"	REM IF ERRORLEVEL 1 SET el=107&&GOTO :endd\r\n" + 
+					 		"	REM IF %quiet% == n ECHO Volume Shadow Service is available and will be used\r\n" + 
+					 		") ELSE (\r\n" + 
+					 		"	REM prevent any mapping if vss is off\r\n" + 
+					 		"	SET mapdrive=%intSettingsLast%\r\n" + 
+					 		"	ECHO Volume Shadow Service will not be used\r\n" + 
+					 		")\r\n" + 
+					 		"\r\n" + 
+					 		"IF /I \"%vss%\" == \"y\" (\r\n" + 
+					 		"SETLOCAL ENABLEEXTENSIONS DISABLEDELAYEDEXPANSION\r\n" + 
+					 		"REM ---- Tidy up before starting the volume shadowing and backup ----\r\n" + 
+					 		"REM delete any existing shadow copies  - there should not normally be any, but can be if a previous backup failed\r\n" + 
+					 		"IF /I \"%vss%\" == \"y\" (\r\n" + 
+					 		"	IF ERRORLEVEL 1 SET el=109&&GOTO :endd\r\n" + 
+					 		"	 ECHO About to delete any existing shadow copies\r\n" + 
+					 		"	ECHO y|\"%runfrom%\\vshadow-%VSHADOWVER%-%WINBIT%.exe\" -da>nul\r\n" + 
+					 		"	IF ERRORLEVEL 1 (\r\n" + 
+					 		"		 ECHO Error occurred: testing for administrator permissions\r\n" + 
+					 		"		MKDIR \"%windir%\\system32\\test\" 2>nul\r\n" + 
+					 		"		IF ERRORLEVEL 1 (\r\n" + 
+					 		"			REM not running as administrator, this is cause of failure\r\n" + 
+					 		"			ECHO No administrator permissions\r\n" + 
+					 		"			SET /A el=11\r\n" + 
+					 		"		) ELSE (\r\n" + 
+					 		"			REM running as administrator, there is a problem with vshadow\r\n" + 
+					 		"			RMDIR \"%windir%\\system32\\test\"\r\n" + 
+					 		"			SET /A el=7\r\n" + 
+					 		"		)\r\n" + 
+					 		"		GOTO :endd\r\n" + 
+					 		"	)\r\n" + 
+					 		"    ECHO Deleted any existing shadow copies\r\n" + 
+					 		")\r\n" + 
+					 		"REM ---- Do the backup ----\r\n" + 
+					 		"SET ACTIONERR=0\r\n" + 
+					 		"IF /I \"%vss%\" EQU \"y\" (\r\n" + 
+					 		"	ECHO Cloning ^(as %mapdrive%^) started %DATE% %TIME%\r\n" + 
+					 		"	ECHO.\r\n" + 
+					 		"	ECHO Summary ^(details follow further below^):\r\n" + 
+					 		")\r\n" + 
+					 		"	IF ERRORLEVEL 1 SET el=111&&GOTO :endd\r\n" + 
+					 		"	REM ---- Run vshadow, which will create shadow copy, run timedicer-action.bat, then delete shadow copy ----\r\n" + 
+					 		"	ECHO About to run 'timedicer-action.bat' in VSS mode\r\n" +
+					 		"	SET el = 0 \r\n" +
+					 		"	\"%runfrom%\\vshadow-%VSHADOWVER%-%WINBIT%.exe\" -script=%TEMP%TimeDicer-vss-setvar.cmd -exec=%1  %unit%  \r\n" + 
+					 		"	IF ERRORLEVEL 1 set el=1 \r\n" + 
+					 		"    ECHO Returned from running 'timedicer-action.bat' in VSS mode\r\n" + 
+					 		")\r\n" +				 		
+					 		"ENDLOCAL\r\n" + 
+					 		"\r\n" + 
+					 		":endd\r\n" +
+					 		"IF %el% GEQ 1 SET ERRORLEVEL=1  \r\n";
+
+				 String script2 = "REM ---- timedicer-action.bat script creation ----\r\n" +
+				 		"SETLOCAL ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION\r\n" + 
+				 		"REM map the shadow device to drive m:\r\n" + 
+				 		"call "+TEMP_DIR+"\\TimeDicer-vss-setvar.cmd\r\n" + 
+				 		USER_HOME+"\\jbackpack\\dosdev "+mapdrive+" %SHADOW_DEVICE_1% \r\n" + 
+				 		"REM cycnet echo command to do backup\r\n" +
+				 		"SET el=0 \r\n" + 
+				 		stringBuilder.toString().replace("%s","%%s")+" \r\n"+
+					 		"IF ERRORLEVEL 1 set el=1\r\n" + 
+					 		"REM delete shadow device drive mapping\r\n" +
+					 		"dir "+mapdrive+"\\ \r\n"+
+					 		USER_HOME+"\\jbackpack\\dosdev -r -d "+mapdrive+" \r\n" +
+					 		"IF el GEQ 1 SET ERRORLEVEL=1 \r\n" + 
+					 		"ELSE ECHO OK\r\n" ;
+		        Logger logger = Logger.getLogger(
+		                ProcessExecutor.class.getName());
+		        Level level = logger.getLevel();
+		        /*
+		        if ((new File(TEMP_DIR+"TimeDicer-vss-setvar.cmd" )).exists() || (new File(TEMP_DIR+"timedicer-action.bat")).exists()) 
+		        	{
+		        	LOGGER.severe("Previous backup error, close all programs and delete contents on: "+TEMP_DIR);
+		        	return 1;
+		        	}
+		        */
+		        //logger.setLevel(Level.OFF);
+		        LOGGER.finest("VSS SCRIPT:\n"+script2);
+		        File scriptFile = null;	        
+		        FileWriter fileWriter = null;
+		        try {
+		            scriptFile = File.createTempFile("processExecutor",".bat", null);
+		            fileWriter = new FileWriter(scriptFile);
+		            fileWriter.write(script);
+		        } finally {
+		            if (fileWriter != null) {
+		                fileWriter.close();
+		            }
+		        }
+		        scriptFile.setExecutable(true);
+		        File scriptFile2 = null;	        
+		        FileWriter fileWriter2 = null;
+		        try {
+		            scriptFile2 = File.createTempFile("processExecutor",".bat", null);
+		            fileWriter2 = new FileWriter(scriptFile2);
+		            fileWriter2.write(script2);
+		        } finally {
+		            if (fileWriter2 != null) {
+		                fileWriter2.close();
+		            }
+		        }
+		        scriptFile2.setExecutable(true);		        
+		        // do NOT(!) store stdOut, it very often leads to
+		        // java.lang.OutOfMemoryError: Java heap space
+		        returnValue = processExecutor.executeProcess(
+		                true, true, scriptFile.getPath(),scriptFile2.getPath());
+		        scriptFile.delete();
+		        scriptFile2.delete();
+		//        // restore previous log level
+		        logger.setLevel(level);		
+		        
+		 	}
+		 	else{
+		        String[] commandArray = new String[commandList.size()];
+		        commandArray = commandList.toArray(commandArray);
+		 		returnValue = processExecutor.executeProcess(false, true, commandArray);
+		 	}
+	        
+		 	return returnValue;
+	        	
 	 }
 
 }

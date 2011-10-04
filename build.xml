@@ -20,20 +20,7 @@ with this program.  If not, see <http://www.gnu.org/licenses/>.
     <description>Builds, tests, and runs the project BackupRestoreGUI.</description>
     <import file="nbproject/build-impl.xml"/>
 
-	<target name="windows-exe" depends="jar">
-		<property name="launch4j.dir" location="/Users/juanra/.eclipse/launch4j"/>
-		<taskdef name="launch4j"
-		    classname="net.sf.launch4j.ant.Launch4jTask"
-		    classpath="libs/launch4j.jar:libs/xstream.jar" />
-		<launch4j>
-		  <config headerType="gui" outfile="${dist.dir.resolved}/JBackpack.exe"
-		     jar="${dist.dir.resolved}/JBackpack.jar" icon="icon.png" bin="${launch4j.dir}/bin">
-		    <jre minVersion="1.4.0">
-		    </jre>
-		  </config>
-		</launch4j>
-	</target>
-	<target name="default" depends="jar"/>
+    <!-- Our own Jar Building Target -->
     <target name="jar" depends="create-jar"/>
 
     <target name="create-jar" depends="init,compile,-pre-pre-jar,-load-properties">
@@ -100,7 +87,7 @@ with this program.  If not, see <http://www.gnu.org/licenses/>.
         <delete file="dist/JBackpack-${JBackpack_Version}.dmg"/>
         <echo>creating dmg...</echo>
         <exec dir="dist" executable="hdiutil">
-            <arg line="create -sectors 90000 -fs HFS+ -volname
+            <arg line="create -sectors 20000 -fs HFS+ -volname
             JBackpack JBackpack-${JBackpack_Version}"/>
         </exec>
         <echo>mounting dmg...</echo>
@@ -113,11 +100,11 @@ with this program.  If not, see <http://www.gnu.org/licenses/>.
         </exec>
         <echo>copying libraries...</echo>
         <exec executable="cp">
-            <arg line="deps/mac/License /Volumes/JBackpack"/>
+            <arg line="deps/mac/License.rtf /Volumes/JBackpack"/>
         </exec>
         <echo>copying libraries...</echo>
         <exec executable="cp">
-            <arg line="deps/mac/OSXFUSE_Website /Volumes/JBackpack"/>
+            <arg line="deps/mac/OSXFUSE_Website.webloc /Volumes/JBackpack"/>
         </exec>
         <echo>copying libraries...</echo>
         <exec executable="cp">
@@ -125,11 +112,11 @@ with this program.  If not, see <http://www.gnu.org/licenses/>.
         </exec>
         <echo>copying libraries...</echo>
         <exec executable="cp">
-            <arg line="deps/mac/OSXFUSE.pkg /Volumes/JBackpack"/>
+            <arg line="-a deps/mac/OSXFUSE.pkg /Volumes/JBackpack"/>
         </exec>
         <echo>copying libraries...</echo>
         <exec executable="cp">
-            <arg line="deps/mac/rdiff-backup.pkg /Volumes/JBackpack"/>
+            <arg line="-a deps/mac/rdiff-backup.pkg /Volumes/JBackpack"/>
         </exec>
         <echo>copying libraries...</echo>
         <exec executable="cp">

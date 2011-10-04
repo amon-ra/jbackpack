@@ -99,6 +99,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
      * preferences key for the source directory
      */
     public static final String SOURCE = "source";
+    
+    public static final String PASSWORD_VALUE = "password_value";
     /**
      * preferences key for the destination ("local", "ssh" or "smb")
      */
@@ -507,6 +509,28 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
      * resets all settings to default values
      */
     public void clearSettings() {
+        // Perhaps ask user if they want to save any unsaved files first.
+        String password="";
+        String mountPoint="";
+        LOGGER.info("Clear Settings we must umount.");
+        if (smbfsMounted) {
+            password = new String(
+                    smbSudoPasswordField.getPassword());
+            try{
+            mountPoint = getSmbfsMountPoint();
+            FileTools.umount(mountPoint,FileTools.SMBFS,password,true,null);
+            }catch(Exception ex){
+            	LOGGER.warning("get smb mountpoint"+ex);
+            }
+        }
+        if (sshfsMounted) {
+        	try{
+	        	mountPoint=getSshfsMountPoint();
+	        	FileTools.umount(mountPoint, FileTools.SSHFS, "",true,sshLoginSwingWorker.processExecutor);       	
+	        }catch(Exception ex){
+	        	LOGGER.warning("get ssh mountpoint"+ex);
+	        }
+        }    	
         compressionCheckBox.setSelected(true);
         showReminder = false;
         reminderTimeout = 7;
@@ -572,18 +596,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         }
         updateSourceDirState();
 
-        String sshUser = sshUserNameTextField.getText();
-        String sshServer = sshServerTextField.getText();
-        try {
-            setSshMounted(FileTools.isMounted(sshUser + '@' + sshServer + ':'));
-        } catch (IOException ex) {
-            LOGGER.log(Level.SEVERE, null, ex);
-        }
-        try {
-            setSmbMounted(getSmbfsMountPoint() != null);
-        } catch (IOException ex) {
-            LOGGER.log(Level.SEVERE, null, ex);
-        }
+
 
         // !!! this must be called after setXXXMounted()!!!
         // otherwise the check functions triggered by the selection change will
@@ -607,10 +620,29 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
 
         if (preferences.getBoolean(PASSWORD_AUTHENTICATION, true)) {
             sshPasswordRadioButton.setSelected(true);
+            sshPasswordField.setText(preferences.get(PASSWORD_VALUE,""));
         } else {
             sshPublicKeyRadioButton.setSelected(true);
+            
         }
+        
+        
+        String sshUser = sshUserNameTextField.getText();
+        String sshServer = sshServerTextField.getText();
 
+        try {
+        	if (FileTools.isMounted(sshUser + '@' + sshServer + ':'))
+        		setSshMounted(true);
+        } catch (IOException ex) {
+            LOGGER.log(Level.SEVERE, null, ex);
+        }
+        try {
+            setSmbMounted(getSmbfsMountPoint() != null);
+        } catch (IOException ex) {
+            LOGGER.log(Level.SEVERE, null, ex);
+        }
+        
+        
         countFilesCheckBox.setSelected(
                 preferences.getBoolean(COUNT_FILES, true));
 
@@ -680,7 +712,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
 
         preferences.putBoolean(
                 PASSWORD_AUTHENTICATION, sshPasswordRadioButton.isSelected());
-
+        if ( sshPasswordRadioButton.isSelected() )preferences.put(PASSWORD_VALUE, new String(sshPasswordField.getPassword()));
+        
         preferences.putBoolean(COUNT_FILES, countFilesCheckBox.isSelected());
         preferences.putBoolean(PLAIN_BACKUP_WARNING, plainBackupWarning);
 
@@ -2640,7 +2673,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         }
 }//GEN-LAST:event_restoreButtonActionPerformed
 
-    private void backupButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_backupButtonActionPerformed
+    public void runBackup(){
 
         boolean exclude = excludeCheckBox.isSelected();
 
@@ -2709,6 +2742,11 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 runBackup(minFileSize, maxFileSize, false, sshPassword);
             }
         }
+}
+    
+    private void backupButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_backupButtonActionPerformed
+    	runBackup();
+
 }//GEN-LAST:event_backupButtonActionPerformed
 
     private void continueButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_continueButtonActionPerformed
@@ -4180,7 +4218,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         smbLoginSwingWorker.execute();
     }
 
-    private void sshLogin(boolean switchToBackup) {
+    public void sshLogin(boolean switchToBackup) {
 
         if (!checkFUSE()) {
             return;

@@ -25,6 +25,7 @@ package ch.fhnw.jbackpack;
 import ch.fhnw.util.CurrentOperatingSystem;
 import ch.fhnw.util.OperatingSystem;
 import ch.fhnw.util.ProcessExecutor;
+import ch.fhnw.util.FileTools;
 import java.awt.Dimension;
 import java.awt.FileDialog;
 import java.awt.Image;
@@ -80,10 +81,10 @@ public class BackupFrame extends javax.swing.JFrame {
             BackupFrame.class.getPackage().getName());
     private static final ResourceBundle BUNDLE =
             ResourceBundle.getBundle("ch/fhnw/jbackpack/Strings");
-    private static final String PROFILES_PATH = "profiles_path";
     private static final String RECENT_PROFILE = "recent_profile_";
     private static final String LOGGING_LEVEL = "logging_level";
     private static final String USER_HOME = System.getProperty("user.home");
+    private static final String PROFILES_PATH = USER_HOME+"profiles_path";
     private static final int RECENT_PROFILES_LIMIT = 4;
     private final ConsoleHandler consoleHandler;
     private final List<String> recentProfiles;
@@ -663,7 +664,29 @@ public class BackupFrame extends javax.swing.JFrame {
         savePreferences();
     }
 
+    /*
     private void openProfile(File profile) {
+        try {
+            FileInputStream fileInputStream = new FileInputStream(profile);
+            preferences.clear();
+            Preferences.importPreferences(fileInputStream);
+            backupMainPanel.setPreferences();
+            backupMainPanel.maybeUnlock(false);
+            addToRecentProFiles(profile.getPath());
+        } catch (BackingStoreException ex) {
+            LOGGER.log(Level.SEVERE, null, ex);
+            openProfileFailed(profile.getPath());
+        } catch (IOException ex) {
+            LOGGER.log(Level.SEVERE, null, ex);
+            openProfileFailed(profile.getPath());
+        } catch (InvalidPreferencesFormatException ex) {
+            LOGGER.log(Level.SEVERE, null, ex);
+            openProfileFailed(profile.getPath());
+        }    	
+    	
+    }
+    */
+    public void openProfile(File profile) {
         try {
             FileInputStream fileInputStream = new FileInputStream(profile);
             preferences.clear();
@@ -709,9 +732,22 @@ public class BackupFrame extends javax.swing.JFrame {
         }
         preferences.putInt(LOGGING_LEVEL, logLevel.ordinal());
     }
+    
+    private void savePreferences(String name) {
+        preferences.put(PROFILES_PATH, profilesPath);
+        for (int i = 0; i < recentProfiles.size(); i++) {
+            String recentFile = recentProfiles.get(i);
+            preferences.put(RECENT_PROFILE + i, recentFile);
+        }
+        for (int i = recentProfiles.size(); i < RECENT_PROFILES_LIMIT; i++) {
+            preferences.remove(RECENT_PROFILE + i);
+        }
+        preferences.putInt(LOGGING_LEVEL, logLevel.ordinal());
+    }
+    
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JMenuItem aboutMenuItem;
-    private ch.fhnw.jbackpack.BackupMainPanel backupMainPanel;
+    public ch.fhnw.jbackpack.BackupMainPanel backupMainPanel;
     private javax.swing.JMenu fileMenu;
     private javax.swing.JMenu helpMenu;
     private javax.swing.JMenuItem helpMenuItem;

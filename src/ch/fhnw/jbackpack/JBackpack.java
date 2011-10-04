@@ -22,6 +22,7 @@ import ch.fhnw.util.CurrentOperatingSystem;
 import ch.fhnw.util.FileTools;
 import ch.fhnw.util.ProcessExecutor;
 import java.awt.SplashScreen;
+import java.io.File;
 import java.text.DateFormat;
 import java.text.MessageFormat;
 import java.util.Date;
@@ -122,7 +123,22 @@ public class JBackpack {
                 systemCheck();
             }
 
-        } else {
+        } if ((args.length > 0) && "--run".equals(args[0])) {
+        	String profile = args[1];
+        	if (profile != null){
+                // a normal application start without any command line arguments
+                setLookAndFeel();
+                checkJavaVersion();
+                BackupFrame elem = new BackupFrame();
+                elem.setVisible(true);   
+        		elem.openProfile (new File(profile));
+        		elem.backupMainPanel.sshLogin(true);
+        		elem.backupMainPanel.runBackup();
+        	}
+        	else {
+        		System.exit(1);
+        	}
+        }else {        
             // a normal application start without any command line arguments
             setLookAndFeel();
             checkJavaVersion();
