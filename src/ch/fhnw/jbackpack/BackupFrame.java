@@ -84,7 +84,7 @@ public class BackupFrame extends javax.swing.JFrame {
     private static final String RECENT_PROFILE = "recent_profile_";
     private static final String LOGGING_LEVEL = "logging_level";
     private static final String USER_HOME = System.getProperty("user.home");
-    private static final String PROFILES_PATH = USER_HOME+"profiles_path";
+    private static final String PROFILES_PATH = USER_HOME+FileTools.separator+".jbackpack"+FileTools.separator+"profiles_path";
     private static final int RECENT_PROFILES_LIMIT = 4;
     private final ConsoleHandler consoleHandler;
     private final List<String> recentProfiles;
@@ -682,11 +682,11 @@ public class BackupFrame extends javax.swing.JFrame {
         } catch (InvalidPreferencesFormatException ex) {
             LOGGER.log(Level.SEVERE, null, ex);
             openProfileFailed(profile.getPath());
-        }    	
-    	
+        }
+
     }
     */
-    public void openProfile(File profile) {
+    public boolean openProfile(File profile) {
         try {
             FileInputStream fileInputStream = new FileInputStream(profile);
             preferences.clear();
@@ -694,15 +694,19 @@ public class BackupFrame extends javax.swing.JFrame {
             backupMainPanel.setPreferences();
             backupMainPanel.maybeUnlock(false);
             addToRecentProFiles(profile.getPath());
+            return true;
         } catch (BackingStoreException ex) {
             LOGGER.log(Level.SEVERE, null, ex);
             openProfileFailed(profile.getPath());
+            return false;
         } catch (IOException ex) {
             LOGGER.log(Level.SEVERE, null, ex);
             openProfileFailed(profile.getPath());
+            return false;
         } catch (InvalidPreferencesFormatException ex) {
             LOGGER.log(Level.SEVERE, null, ex);
             openProfileFailed(profile.getPath());
+            return false;
         }
     }
 
@@ -732,7 +736,7 @@ public class BackupFrame extends javax.swing.JFrame {
         }
         preferences.putInt(LOGGING_LEVEL, logLevel.ordinal());
     }
-    
+
     private void savePreferences(String name) {
         preferences.put(PROFILES_PATH, profilesPath);
         for (int i = 0; i < recentProfiles.size(); i++) {
@@ -744,7 +748,7 @@ public class BackupFrame extends javax.swing.JFrame {
         }
         preferences.putInt(LOGGING_LEVEL, logLevel.ordinal());
     }
-    
+
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JMenuItem aboutMenuItem;
     public ch.fhnw.jbackpack.BackupMainPanel backupMainPanel;

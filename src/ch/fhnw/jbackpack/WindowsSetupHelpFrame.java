@@ -211,9 +211,9 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
 }//GEN-LAST:event_installMSButtonActionPerformed
 
     private void installRdiffbackupButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_installRdiffbackupButtonActionPerformed
-        final File win32Dir = new File(HOME_DIR+"/jbackpack");
+        final File win32Dir = new File(HOME_DIR+"/.jbackpack");
     	final File win32File =
-                new File(HOME_DIR+"/jbackpack/", "jbackpack-deps.zip");
+                new File(HOME_DIR+"/.jbackpack/", "jbackpack-deps.zip");
     	win32Dir.mkdir();
         LOGGER.log(Level.INFO, "downloading to {0}", win32File);
         final String description = "Dokeos+sshfs+rdiff-backup";
@@ -233,7 +233,7 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
                     try {
                         if (downloadSwingWorker.get()) {
                             unpackAndCopy(win32File, description);
-                            final File exeFile =new File(HOME_DIR+"/jbackpack/", "DokanInstall_0.6.0.exe");
+                            final File exeFile =new File(HOME_DIR+"/.jbackpack/", "DokanInstall_0.6.0.exe");
                             if (exeFile.exists())
                             {
                                 LOGGER.log(Level.INFO, "Executing Install file {0}", exeFile);
@@ -285,7 +285,7 @@ public class WindowsSetupHelpFrame extends javax.swing.JFrame {
     private void unpackAndCopy(File win32File, String description)
             throws IOException {
         String osName = System.getProperty("os.name");
-        String system32Path = HOME_DIR+"/jbackpack/";
+        String system32Path = HOME_DIR+"/.jbackpack/";
         LOGGER.log(Level.INFO, "extracting to {0}", system32Path);
         //if ("Windows XP".equals(osName)) {
         if (true){

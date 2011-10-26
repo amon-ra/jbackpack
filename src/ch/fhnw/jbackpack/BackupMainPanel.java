@@ -99,7 +99,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
      * preferences key for the source directory
      */
     public static final String SOURCE = "source";
-    
+
     public static final String PASSWORD_VALUE = "password_value";
     /**
      * preferences key for the destination ("local", "ssh" or "smb")
@@ -300,7 +300,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
     private boolean showReminder;
     private int reminderTimeout;
     private SshLoginSwingWorker sshLoginSwingWorker;
-    
+    public boolean closeAfterBackup = false;
+
     /** Creates new form BackupMainPanel */
     public BackupMainPanel() {
 
@@ -468,7 +469,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 if (sshfsMounted) {
                 	try{
         	        	mountPoint=getSshfsMountPoint();
-        	        	FileTools.umount(mountPoint, FileTools.SSHFS, "",true,sshLoginSwingWorker.processExecutor);       	
+        	        	FileTools.umount(mountPoint, FileTools.SSHFS, "",true,sshLoginSwingWorker.processExecutor);
         	        }catch(Exception ex){
         	        	LOGGER.warning("get ssh mountpoint"+ex);
         	        }
@@ -526,11 +527,11 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         if (sshfsMounted) {
         	try{
 	        	mountPoint=getSshfsMountPoint();
-	        	FileTools.umount(mountPoint, FileTools.SSHFS, "",true,sshLoginSwingWorker.processExecutor);       	
+	        	FileTools.umount(mountPoint, FileTools.SSHFS, "",true,sshLoginSwingWorker.processExecutor);
 	        }catch(Exception ex){
 	        	LOGGER.warning("get ssh mountpoint"+ex);
 	        }
-        }    	
+        }
         compressionCheckBox.setSelected(true);
         showReminder = false;
         reminderTimeout = 7;
@@ -623,10 +624,10 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
             sshPasswordField.setText(preferences.get(PASSWORD_VALUE,""));
         } else {
             sshPublicKeyRadioButton.setSelected(true);
-            
+
         }
-        
-        
+
+
         String sshUser = sshUserNameTextField.getText();
         String sshServer = sshServerTextField.getText();
 
@@ -641,8 +642,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         } catch (IOException ex) {
             LOGGER.log(Level.SEVERE, null, ex);
         }
-        
-        
+
+
         countFilesCheckBox.setSelected(
                 preferences.getBoolean(COUNT_FILES, true));
 
@@ -713,7 +714,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         preferences.putBoolean(
                 PASSWORD_AUTHENTICATION, sshPasswordRadioButton.isSelected());
         if ( sshPasswordRadioButton.isSelected() )preferences.put(PASSWORD_VALUE, new String(sshPasswordField.getPassword()));
-        
+
         preferences.putBoolean(COUNT_FILES, countFilesCheckBox.isSelected());
         preferences.putBoolean(PLAIN_BACKUP_WARNING, plainBackupWarning);
 
@@ -735,6 +736,10 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 autoDeletionSpaceComboBox.getSelectedIndex());
     }
 
+
+    public boolean isSSH(){
+    	return sshRadioButton.isSelected();
+    }
     /**
      * returns the encfs mountpoint
      * @return the encfs mountpoint
@@ -2743,7 +2748,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
             }
         }
 }
-    
+
     private void backupButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_backupButtonActionPerformed
     	runBackup();
 
@@ -3387,7 +3392,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                     ? "" : File.separator) + selectedPath;
             File mountDir= new File(mountPoint);
             /*
-            if (CurrentOperatingSystem.OS == OperatingSystem.Windows && sshRadioButton.isSelected()) 
+            if (CurrentOperatingSystem.OS == OperatingSystem.Windows && sshRadioButton.isSelected())
             {
             	selectedPath = selectedPath.replace('/','\\');
             	mountDir = new File(mountPoint.replace('/','\\'));
@@ -3419,7 +3424,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 }else{
                 	/*
                 	if (sshRadioButton.isSelected()){
-                		newPath = newPath.replace('\\', '/');             		
+                		newPath = newPath.replace('\\', '/');
                 	}
                 	*/
                 	if (newPath.contains(FileTools.unitWin) || newPath.contains(FileTools.unitWinCaps))
@@ -3748,7 +3753,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         	case Windows:
                 // expect is necessary for both sshfs and encfs password changes
                     returnValue = processExecutor.executeProcess(
-                            USER_HOME+"\\jbackpack\\DokanSSHFS.exe", "--version");
+                            USER_HOME+"\\.jbackpack\\DokanSSHFS.exe", "--version");
                     if (returnValue != 0) {
                         JEditorPane editorPane = new JEditorPane("text/html",
                                 BUNDLE.getString("Warning_No_SSHFS"));
@@ -3765,11 +3770,11 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                     // encryption checks
 
                     //returnValue = processExecutor.executeProcess(
-                    //	USER_HOME+"\\jbackpack\\encfs.exe", "--version");
+                    //	USER_HOME+"\\.jbackpack\\encfs.exe", "--version");
                     returnValue = 1; //not suported yet
                     if (returnValue == 0) {
                         returnValue = processExecutor.executeProcess(
-                        		USER_HOME+"\\jbackpack\\rsync.exe", "--version");
+                        		USER_HOME+"\\.jbackpack\\rsync.exe", "--version");
                         if (returnValue != 0) {
                             JOptionPane.showMessageDialog(parentFrame,
                                     BUNDLE.getString("Warning_No_Rsync"),
@@ -4461,7 +4466,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         private final String user;
         private final boolean switchToBackup;
         public ProcessExecutor processExecutor;
-        
+
         public SshLoginSwingWorker(String host, String user,
                 boolean switchToBackup) {
             this.host = host;
@@ -4713,6 +4718,11 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                     showCard(BackupMainPanel.this,
                             "sessionStatisticsPanel");
                     quitButton.requestFocusInWindow();
+                    if (closeAfterBackup){
+                        savePreferences();
+                        System.exit(0);
+                    }
+
 
                 } else {
                     if (!processCancelled) {
@@ -5082,7 +5092,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
     private javax.swing.JButton restoredOKButton;
     private javax.swing.JSeparator separator1;
     private javax.swing.JPanel sessionStatisticsPanel;
-    private javax.swing.JCheckBox shutdownCheckBox;
+    public javax.swing.JCheckBox shutdownCheckBox;
     private javax.swing.JLabel shutdownLabel;
     private javax.swing.JPanel shutdownPanel;
     private javax.swing.JPasswordField shutdownPasswordField;

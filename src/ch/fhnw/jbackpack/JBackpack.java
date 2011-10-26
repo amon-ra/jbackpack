@@ -122,23 +122,41 @@ public class JBackpack {
             if (returnValue == JOptionPane.YES_OPTION) {
                 systemCheck();
             }
-
-        } if ((args.length > 0) && "--run".equals(args[0])) {
+        } else if ((args.length > 0) && "--runonce".equals(args[0])) {
         	String profile = args[1];
         	if (profile != null){
                 // a normal application start without any command line arguments
                 setLookAndFeel();
                 checkJavaVersion();
                 BackupFrame elem = new BackupFrame();
-                elem.setVisible(true);   
-        		elem.openProfile (new File(profile));
-        		elem.backupMainPanel.sshLogin(true);
-        		elem.backupMainPanel.runBackup();
+                elem.setVisible(true);
+                if (elem.openProfile (new File(profile))) {
+                	if (elem.backupMainPanel.isSSH()) elem.backupMainPanel.sshLogin(true);
+                	elem.backupMainPanel.runBackup();
+                }
         	}
         	else {
         		System.exit(1);
         	}
-        }else {        
+        } else if ((args.length > 0) && "--run".equals(args[0])) {
+        	String profile = args[1];
+            //Logger.getLogger(JBackpack.class.getName()).log(Level.WARNING,"Run option:",profile);
+        	if (profile != null){
+                // a normal application start without any command line arguments
+                setLookAndFeel();
+                checkJavaVersion();
+                BackupFrame elem = new BackupFrame();
+                elem.setVisible(true);
+        		if (elem.openProfile (new File(profile))){
+        			elem.backupMainPanel.closeAfterBackup=true;
+        			if (elem.backupMainPanel.isSSH()) elem.backupMainPanel.sshLogin(true);
+        			elem.backupMainPanel.runBackup();
+        		}
+        	}
+        	else {
+        		System.exit(1);
+        	}
+        }else {
             // a normal application start without any command line arguments
             setLookAndFeel();
             checkJavaVersion();
