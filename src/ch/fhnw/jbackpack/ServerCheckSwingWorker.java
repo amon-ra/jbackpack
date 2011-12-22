@@ -55,6 +55,7 @@ public abstract class ServerCheckSwingWorker
     private final ProcessExecutor processExecutor;
     private final String user;
     private final String host;
+    private final String port;
     private final String warningMessageKey;
     private boolean wrongPassword;
 
@@ -67,12 +68,13 @@ public abstract class ServerCheckSwingWorker
      * @param warningMessageKey the ressource bundle key of the warning message
      * to show when there is no remote support for rdiff-backup
      */
-    public ServerCheckSwingWorker(Window parent, String user, String host,
+    public ServerCheckSwingWorker(Window parent, String user, String host,String port,
             String password, String warningMessageKey) {
         this.parent = parent;
         this.user = user;
         this.host = host;
         this.password = password;
+        this.port=port;
         this.warningMessageKey = warningMessageKey;
         processExecutor = new ProcessExecutor();
         progressDialog = new ProgressDialog(parent, processExecutor);
@@ -98,7 +100,7 @@ public abstract class ServerCheckSwingWorker
      */
     @Override
     protected Boolean doInBackground() {
-    	wrongPassword = FileTools.testRdiffBackupServer(user,host,password,WRONG_PASSWORD,processExecutor);
+    	wrongPassword = FileTools.testRdiffBackupServer(user,host,port,password,WRONG_PASSWORD,processExecutor);
     	return wrongPassword;
     }
 

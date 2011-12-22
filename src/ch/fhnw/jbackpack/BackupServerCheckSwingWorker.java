@@ -41,10 +41,10 @@ public class BackupServerCheckSwingWorker extends ServerCheckSwingWorker {
      * @param minFileSize the minimal file size
      * @param maxFileSize the maximum file size
      */
-    public BackupServerCheckSwingWorker(Window parent, String user, String host,
+    public BackupServerCheckSwingWorker(Window parent, String user, String host,String port,
             String password, BackupMainPanel backupMainPanel, Long minFileSize,
             Long maxFileSize) {
-        super(parent, user, host, password, "Warning_No_Remote_Support_Backup");
+        super(parent, user, host,port, password, "Warning_No_Remote_Support_Backup");
         this.backupMainPanel = backupMainPanel;
         this.minFileSize = minFileSize;
         this.maxFileSize = maxFileSize;

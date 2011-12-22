@@ -102,7 +102,7 @@ public class ProcessExecutor {
      */
     public int executeScript(boolean storeStdOut, boolean storeStdErr,
             String script, String... parameters) throws IOException {
-        LOGGER.log(Level.FINE, "script:\n{0}", script);
+        LOGGER.log(Level.FINE, "--------SCRIPT----------:\n{0}", script);
         File scriptFile = null;
         try {
             scriptFile = createScript(script);
@@ -112,11 +112,19 @@ public class ProcessExecutor {
             commandArray[0] = scriptPath;
             System.arraycopy(parameters, 0, commandArray, 1, parametersCount);
             return executeProcess(storeStdOut, storeStdErr, commandArray);
-        } finally {
-            if ((scriptFile != null) && !scriptFile.delete()) {
+        } catch (Exception ex) {
+        	if (LOGGER.getLevel()==Level.FINEST){
+        		LOGGER.warning("ERROR en script:"+scriptFile.getPath()+"\n"+ ex);
+        	}
+        	else if ((scriptFile != null) && !scriptFile.delete()) {
                 LOGGER.log(Level.WARNING, "could not delete {0}", scriptFile);
-            }
+        	}
         }
+        if ((scriptFile != null) && !scriptFile.delete()) {
+                LOGGER.log(Level.WARNING, "could not delete {0}", scriptFile);
+        }
+
+        return -1;
     }
 
     /**
@@ -129,7 +137,9 @@ public class ProcessExecutor {
         File scriptFile = null;
         FileWriter fileWriter = null;
         try {
-            scriptFile = File.createTempFile("processExecutor", null);
+        	if ((CurrentOperatingSystem.OS != OperatingSystem.Windows))
+        		scriptFile = File.createTempFile("processExecutor", null);
+        	else scriptFile = File.createTempFile("processExecutor", ".bat",null);
             fileWriter = new FileWriter(scriptFile);
             fileWriter.write(script);
         } finally {
@@ -200,7 +210,6 @@ public class ProcessExecutor {
             stdoutReader.start();
             stderrReader.start();
             int exitValue = process.waitFor();
-            LOGGER.log(Level.FINEST, "Exitvalue: {0}", exitValue);
 
             // wait for readers to finish...
             if (storeStdOut) {
@@ -260,7 +269,7 @@ public class ProcessExecutor {
             stderrReader.start();
             int exitValue = 0 ;
             //process.waitFor();
-            
+
             Thread.sleep(FileTools.mountStep);
             //process.wait(FileTools.mountWaitTime);
             LOGGER.log(Level.FINE, "exitValue = {0}", exitValue);

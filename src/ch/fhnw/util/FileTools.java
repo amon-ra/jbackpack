@@ -48,7 +48,7 @@ public class FileTools {
             Logger.getLogger(FileTools.class.getName());
     private final static ResourceBundle BUNDLE = ResourceBundle.getBundle(
             "ch/fhnw/jbackpack/Strings");
-    private static final String LINE_SEPARATOR =
+    public static final String LINE_SEPARATOR =
             System.getProperty("line.separator");
     private final static NumberFormat NUMBER_FORMAT =
             NumberFormat.getInstance();
@@ -65,8 +65,10 @@ public class FileTools {
     public static String TEMP_DIR = System.getProperty("java.io.tmpdir");
     public static boolean DO_VSS = (CurrentOperatingSystem.OS == OperatingSystem.Windows);
     public static String mapdrive = "m:";
-    public static final String rdiffbackupCommand = (CurrentOperatingSystem.OS == OperatingSystem.Windows) ? USER_HOME+"\\.jbackpack\\rdiff-backup.exe" : "rdiff-backup";
-
+    public static final String rdiffbackupCommand = (CurrentOperatingSystem.OS == OperatingSystem.Windows) ? "\""+USER_HOME+"\\.jbackpack\\rdiff-backup.exe\"" : "rdiff-backup";
+    public static String DOKAN_HOME = System.getenv("ProgramFiles")+"\\Dokan\\DokanLibrary";
+    public static String JBACKPACK_HOME=USER_HOME+"\\.jbackpack";
+    public static String DOKANSSH = LOGGER.getLevel() == Level.FINEST ? USER_HOME+"\\.jbackpack\\DokanSSHFS.exe -sd -dd" : USER_HOME+"\\.jbackpack\\DokanSSHFS.exe";
     /**
      * checks if a directory is writable
      * @param directory the directory to check
@@ -467,7 +469,7 @@ public class FileTools {
         switch (CurrentOperatingSystem.OS) {
         	case Windows:
                int returnValue = processExecutor.executeProcess(
-                        USER_HOME+"\\.jbackpack\\dokanctl.exe", "/u", unitWin.substring(0, 1));
+            		   DOKANSSH, "-U"+unitWin.substring(0, 1));
                 boolean success = (returnValue == 0);
                 if (!success) {
                     LOGGER.log(Level.WARNING,
@@ -519,14 +521,16 @@ public class FileTools {
         ProcessExecutor processExecutor = new ProcessExecutor();
         int returnValue = -1;
         boolean success = false;
-
+        delete = true;
+        LOGGER.log(Level.FINEST,"UMOUNT:"+mountPoint);
+        try{
         switch (CurrentOperatingSystem.OS) {
         	case Windows:
         	   if (type == SMBFS) returnValue = processExecutor.executeProcess(
                        "net", "use", mountPoint, "/delete");
         	   else if (type == SSHFS){
         		   returnValue = processExecutor.executeProcess(
-                        USER_HOME+"\\.jbackpack\\dokanctl.exe", "/u", unitWin.substring(0, 1));
+        				   DOKANSSH, "-U"+unitWin.substring(0, 1));
         		   if (oldExecutor != null) oldExecutor.destroy();
         	   }
                 success = (returnValue == 0);
@@ -543,9 +547,9 @@ public class FileTools {
         	                + "echo " + password + " | sudo -S umount " + mountPoint;
 
         	        // set level to OFF to prevent password leaking into logfiles
-        	        Logger logger = Logger.getLogger(ProcessExecutor.class.getName());
-        	        Level level = logger.getLevel();
-        	        logger.setLevel(Level.OFF);
+        	        //Logger logger = Logger.getLogger(ProcessExecutor.class.getName());
+        	        //Level level = logger.getLevel();
+        	        //logger.setLevel(Level.OFF);
         			try{
         				processExecutor.executeScript(umountScript);
 
@@ -553,7 +557,7 @@ public class FileTools {
         				errorS=true;
         			}
     		        // restore previous log level
-    		        logger.setLevel(level);
+    		        //logger.setLevel(level);
     		        if (errorS)                        LOGGER.log(Level.WARNING,
                             "Linux SMB (using sudo) could not umount {0}", mountPoint);
         		}
@@ -573,6 +577,7 @@ public class FileTools {
                 returnValue = processExecutor.executeProcess(
                         "umount", mountPoint);
                 success = (returnValue == 0);
+
                 if (!success) {
                     LOGGER.log(Level.WARNING,
                             "could not umount {0}", mountPoint);
@@ -586,6 +591,10 @@ public class FileTools {
                 LOGGER.log(Level.WARNING,
                         "{0} is not supported", CurrentOperatingSystem.OS);
                 success= false;
+        }
+        } catch (Exception ex){
+        	LOGGER.warning("umount Failed:\n");
+        	return false;
         }
 
         return success;
@@ -636,7 +645,7 @@ public class FileTools {
         logger.setLevel(Level.OFF);
 
         if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)) returnValue = processExecutor.executeScript(script);
-        else returnValue = processExecutor.executeProcess(true,true,USER_HOME+"\\.jbackpack\\enfs.exe",cipherDir,plainDir );
+        else returnValue = processExecutor.executeProcess(true,true,USER_HOME+"\\.jbackpack\\encfs.exe",cipherDir,plainDir );
         // restore previous log level
         logger.setLevel(level);
 
@@ -863,6 +872,8 @@ public class FileTools {
                 LOGGER.log(Level.WARNING,
                         "{0} is not supported", CurrentOperatingSystem.OS);
         }
+        LOGGER.log(Level.WARNING,
+                "MOUNTPOINT UNDEFINED");
         return null;
     }
 
@@ -967,14 +978,19 @@ public class FileTools {
      * @return <tt>true</tt> if mounting was successfull,
      * <tt>false</tt> otherwise
      */
-    public static boolean mountSSHFS (ProcessExecutor processExecutor,String user,String host,String baseDir, String mountName, String identity)
+    public static boolean mountSSHFS (ProcessExecutor processExecutor,String user,String host,String port,String baseDir, String mountName, String identity)
     		 throws IOException {
 
     	String userHostDir = user + "@" + host + ':';
     	String mountPoint;
+    	LOGGER.info("mountSSHFS");
     	if (CurrentOperatingSystem.OS != OperatingSystem.Windows)
     		mountPoint = createMountPoint(new File(mountName), host).getPath();
-    	else mountPoint = unitWin;
+    	else {
+    		mountPoint = unitWin;
+    		//evitamos montar 2 veces la unidad
+    		//if ((new File(mountPoint)).exists()) return true;
+    	}
     	int returnValue;
         if (!baseDir.isEmpty()) {
             if (!baseDir.startsWith("/")) {
@@ -982,6 +998,7 @@ public class FileTools {
             }
             userHostDir += baseDir;
         }
+        //if ((new File(mounPoint)).exists()) return true;
     	if (identity == null)
     	{
     		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows))
@@ -990,15 +1007,21 @@ public class FileTools {
 
 		        returnValue = processExecutor.executeProcess(true,
 		                true, "sshfs", "-o", "ServerAliveInterval=15",
+		                "-p", port,
 		                "-o", "workaround=rename,idmap=user",
 		                userHostDir, mountPoint);
 		        return (returnValue == 0);
     		}else{
+    			if (!(new File(unitWin)).exists()){
+    				//TEst if exist drive and processExecutor.destroy();
+    				umount(mountPoint, FileTools.SSHFS, "",true,processExecutor);
+    				returnValue=1;
+    			}
             	// Modify to run in windows
             	// umount: dokanctl.exe /u DriveLetter
 		        returnValue = processExecutor.executeNProcess(true,
-		                true, USER_HOME+"\\.jbackpack\\DokanSSHFS.exe", // "-d",mountPoint,
-		                "-i",USER_HOME+"\\.jbackpack\\"+host+".ppk", userHostDir);
+		                true, DOKANSSH, "-D"+mountPoint.substring(0, 1),
+		                "-i"+USER_HOME+"\\.jbackpack\\"+host+".ppk","-p"+port, userHostDir);
 		        for (long i=mountWaitTime;i>0;i=i-mountStep){
 	    			if (!(new File(unitWin)).exists()){
 						try {
@@ -1025,8 +1048,8 @@ public class FileTools {
             Logger logger = Logger.getLogger(
                     ProcessExecutor.class.getName());
             Level level = logger.getLevel();
-            logger.setLevel(Level.OFF);
-            //logger.info("sshMount:"+mountPoint);
+            //logger.setLevel(Level.OFF);
+            logger.info("sshMount:"+mountPoint);
     		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows))
     		{
             	String loginScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
@@ -1034,6 +1057,7 @@ public class FileTools {
                     + "spawn -ignore HUP sshfs -o "
                     //+ "sshfs -o "
                     + "workaround=rename,idmap=user "
+                    + "-p "+port+" "
                     + userHostDir + " " + mountPoint + LINE_SEPARATOR
                     + "while 1 {" + LINE_SEPARATOR
                     + "    expect {" + LINE_SEPARATOR
@@ -1044,7 +1068,7 @@ public class FileTools {
                     + LINE_SEPARATOR
                     + "            send \"yes\r\"" + LINE_SEPARATOR
                     + "        }" + LINE_SEPARATOR
-                    + "        \"password:\" {" + LINE_SEPARATOR
+                    + "        \"assword:\" {" + LINE_SEPARATOR
                     + "            send \"$password\r\""
                     + LINE_SEPARATOR
                     + "        }" + LINE_SEPARATOR
@@ -1059,7 +1083,12 @@ public class FileTools {
                 // restore previous log level
                 logger.setLevel(level);
     		}else {
-    			returnValue = processExecutor.executeNProcess(false,false,USER_HOME+"\\.jbackpack\\DokanSSHFS.exe","-P",identity,userHostDir);
+    			if (!(new File(unitWin)).exists()){
+    				//TEst if exist drive and processExecutor.destroy();
+    				umount(mountPoint, FileTools.SSHFS, "",true,processExecutor);
+    				returnValue=1;
+    			}
+    			returnValue = processExecutor.executeNProcess(false,false,DOKANSSH,"-P"+identity,"-p"+port,"-D"+mountPoint.substring(0, 1),userHostDir);
                 // restore previous log level
                 logger.setLevel(level);
                 //ogger.log(Level.FINE, "DokeanSSHFS:"+USER_HOME+"\\jbackpack\\DokanSSHFS.exe"+"-P "+identity+" "+userHostDir);
@@ -1098,13 +1127,14 @@ public class FileTools {
      * @return <tt>true</tt> if mounting was successfull,
      * <tt>false</tt> otherwise
      */
-	public static boolean testRdiffBackupServer (String user, String host,String password,byte WRONG_PASSWORD,ProcessExecutor processExecutor){
+	public static boolean testRdiffBackupServer (String user, String host,String port,String password,byte WRONG_PASSWORD,ProcessExecutor processExecutor){
     	//in windows we use plink
 		int returnValue = -1;
 		if ((CurrentOperatingSystem.OS != OperatingSystem.Windows)){
         String checkScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
                 + "set password [lindex $argv 0]" + LINE_SEPARATOR
                 + "spawn -ignore HUP rdiff-backup --test-server "
+                + "--remote-schema \"ssh -p"+port+" %s rdiff-backup --server\""
                 + user + '@' + host + "::/" + LINE_SEPARATOR
                 + "while 1 {" + LINE_SEPARATOR
                 + "    expect {" + LINE_SEPARATOR
@@ -1117,7 +1147,7 @@ public class FileTools {
                 + "        \"continue connecting*\" {" + LINE_SEPARATOR
                 + "            send \"yes\r\"" + LINE_SEPARATOR
                 + "        }" + LINE_SEPARATOR
-                + "        \"" + user + '@' + host + "'s password:\" {"
+                + "        \"assword:\" {"
                 + LINE_SEPARATOR
                 + "            send \"$password\r\"" + LINE_SEPARATOR
                 + "        }" + LINE_SEPARATOR
@@ -1149,11 +1179,11 @@ public class FileTools {
 	        try {
 	        	if (password != null)
 	        		returnValue = processExecutor.executeProcess(true, true,
-	            		USER_HOME+"\\.jbackpack\\plink.exe", "-pw",password,user + '@' + host,
+	            		"\""+USER_HOME+"\\.jbackpack\\plink.exe\"", "-batch","-P",port,"-pw",password,user + '@' + host,
 	            		"\"rdiff-backup --version\"");
 	        	else
 		            returnValue = processExecutor.executeProcess(true, true,
-		            		USER_HOME+"\\.jbackpack\\plink.exe -i "+USER_HOME+"\\.jbackpack\\"+host+".ppk "+
+		            		"\""+USER_HOME+"\\.jbackpack\\plink.exe\" -batch -P "+port+" -i "+USER_HOME+"\\.jbackpack\\"+host+".ppk "+
 		            		user + '@' + host + " \"rdiff-backup --version\"");
 
 
@@ -1379,7 +1409,7 @@ public class FileTools {
 					 		"	SET el = 0 \r\n" +
 					 		"	\"%runfrom%\\vshadow-%VSHADOWVER%-%WINBIT%.exe\" -script=%TEMP%TimeDicer-vss-setvar.cmd -exec=%1  %unit%  \r\n" +
 					 		"	IF ERRORLEVEL 1 set el=1 \r\n" +
-					 		"    ECHO Returned from running 'timedicer-action.bat' in VSS mode\r\n" +
+					 		"    ECHO Returned from running 'timedicer-action.bat' in VSS mode __ %el% ___ \r\n" +
 					 		")\r\n" +
 					 		"ENDLOCAL\r\n" +
 					 		"\r\n" +
@@ -1390,16 +1420,22 @@ public class FileTools {
 				 		"SETLOCAL ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION\r\n" +
 				 		"REM map the shadow device to drive m:\r\n" +
 				 		"call "+TEMP_DIR+"\\TimeDicer-vss-setvar.cmd\r\n" +
-				 		USER_HOME+"\\.jbackpack\\dosdev "+mapdrive+" %SHADOW_DEVICE_1% \r\n" +
+				 		"\""+USER_HOME+"\\.jbackpack\\dosdev.exe\" "+mapdrive+" %SHADOW_DEVICE_1% \r\n" +
 				 		"REM cycnet echo command to do backup\r\n" +
 				 		"SET el=0 \r\n" +
-				 		stringBuilder.toString().replace("%s","%%s")+" \r\n"+
-					 		"IF ERRORLEVEL 1 set el=1\r\n" +
-					 		"REM delete shadow device drive mapping\r\n" +
-					 		"dir "+mapdrive+"\\ \r\n"+
-					 		USER_HOME+"\\.jbackpack\\dosdev -r -d "+mapdrive+" \r\n" +
-					 		"IF el GEQ 1 SET ERRORLEVEL=1 \r\n" +
-					 		"ELSE ECHO OK\r\n" ;
+				 		"del "+TEMP_DIR+"rdiff-backup.log \r\n" +
+				 		stringBuilder.toString().replace("%s","%%s")+" 1>> "+TEMP_DIR+"rdiff-backup.log 2>&1 \r\n"+
+					 		"IF ERRORLEVEL 1 ( \r\n" +
+					 		"	set el=1\r\n" +
+					 		"	REM delete shadow device drive mapping\r\n" +
+					 		"	dir "+mapdrive+"\\ \r\n" +
+					 		") \r\n"+
+					 		"\""+USER_HOME+"\\.jbackpack\\dosdev.exe\" -r -d "+mapdrive+" \r\n" +
+					 		"IF el GEQ 1  ( \r\n" +
+					 		"	SET ERRORLEVEL=1 \r\n" +
+					 		") ELSE ( \r\n" +
+					 		"	ECHO OK \r\n" +
+					 		") \r\n" ;
 		        Logger logger = Logger.getLogger(
 		                ProcessExecutor.class.getName());
 		        Level level = logger.getLevel();
@@ -1411,7 +1447,7 @@ public class FileTools {
 		        	}
 		        */
 		        //logger.setLevel(Level.OFF);
-		        LOGGER.finest("VSS SCRIPT:\n"+script2);
+		        LOGGER.finest("VSS SCRIPT:\n"+script+"\n"+script2);
 		        File scriptFile = null;
 		        FileWriter fileWriter = null;
 		        try {
@@ -1449,14 +1485,213 @@ public class FileTools {
 		 	else{
 		        String[] commandArray = new String[commandList.size()];
 		        commandArray = commandList.toArray(commandArray);
-		 		returnValue = processExecutor.executeProcess(false, true, commandArray);
+		 		returnValue = processExecutor.executeProcess(true, true, commandArray);
 		 	}
 
 		 	return returnValue;
 
 	 }
 
+
+
+public static File createBackup (String source,List<String> commandList)
+		 throws IOException {
+	 int returnValue=1;
+
+       // do NOT(!) store stdOut, it very often leads to:
+       // java.lang.OutOfMemoryError: Java heap space
+	 	if (DO_VSS)
+	 	{
+			 StringBuilder stringBuilder = new StringBuilder();
+			    for (String command : commandList) {
+			        stringBuilder.append(command);
+			        stringBuilder.append(' ');
+			    }
+			    //Dividir en 2
+			    	String script1 = File.createTempFile("processExecutor",".bat", null).getPath();
+				    String script2 =  "echo" + "REM ---- timedicer-action.bat script creation ----".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"SETLOCAL ENABLEEXTENSIONS ENABLEDELAYEDEXPANSION".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"REM map the shadow device to drive m:".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"call "+TEMP_DIR+"\\TimeDicer-vss-setvar.cmd".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"\""+USER_HOME+"\\.jbackpack\\dosdev.exe\" "+mapdrive+" %SHADOW_DEVICE_1% ".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"REM cycnet echo command to do backup".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"SET el=0 ".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"del "+TEMP_DIR+"rdiff-backup.log ".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\""+stringBuilder.toString().replace("%s","%%s")+" 1>> "+TEMP_DIR+"rdiff-backup.log 2>&1 ".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"IF ERRORLEVEL 1 ( ".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"	set el=1".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"	REM delete shadow device drive mapping".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"	dir "+mapdrive+"\\ ".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\")  >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"\""+USER_HOME+"\\.jbackpack\\dosdev.exe\" -r -d "+mapdrive+" ".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"IF el GEQ 1  ( ".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"	SET ERRORLEVEL=1 ".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\") ELSE ( ".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\"	ECHO OK ".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR
+				    + "echo" + "\")".replace("\"","\\\"")+"\" >"+script1+LINE_SEPARATOR;
+
+			        File scriptFile = null;
+			        FileWriter fileWriter = null;
+			        try {
+			            scriptFile = File.createTempFile("processExecutor",".bat", null);
+			            fileWriter = new FileWriter(scriptFile);
+			            fileWriter.write(script2);
+			        } finally {
+			            if (fileWriter != null) {
+			                fileWriter.close();
+			            }
+			        }
+			        scriptFile.setExecutable(true);
+			        script2 = script2+ "@ECHO off\r\n" +
+				 		"REM ---- Change current drive ----\r\n" +
+				 		"REM We need ssed.exe,dosdev.exe\r\n" +
+				 		"REM Usage: vss.bat runfrom temp mapdrive: copydrive:\r\n" +
+				 		"REM For reasons that are undocumented - but probably related to the location of\r\n" +
+				 		"REM snapshot data - vshadow must be run with a local, or the snapshot source,\r\n" +
+				 		"REM drive as the current drive on the command line. So we must switch to source\r\n" +
+				 		"REM drive and ensure that all calls to external programs are mapped back to the\r\n" +
+				 		"REM original location  - which may for instance be on a network share\r\n" +
+				 		"SET runfrom="+USER_HOME+"\\.jbackpack\r\n" +
+				 		"SET vss=y\r\n" +
+				 		"SET TEMP=" +TEMP_DIR + "\r\n" +
+				 		"SET mapdrive="+mapdrive+"\r\n" +
+				 		"SET unit="+source.substring(0,2)+"\r\n" +
+				 		"SET command=\""+scriptFile.getPath()+"\"\r\n" +
+				 		"\r\n" +
+				 		"ECHO ------------------------------------VSS--------------------------------------------------\r\n" +
+				 		"REM ----------\r\n" +
+				 		"REM Determine Windows version WINVER 5.0=2000, 5.1=XP, 5.2=2003, 6.0=Vista, 6.1=7/2008\r\n" +
+				 		"FOR /F \"tokens=2* delims=[]\" %%A IN ('VER') DO FOR /F \"tokens=2,3 delims=. \" %%B IN (\"%%A\") DO SET WINVER=%%B.%%C\r\n" +
+				 		"REM Determine Windows 32-bit (x86) or 64-bit (x64) WINBIT\r\n" +
+				 		"SET WINBIT=x86&&IF \"%PROCESSOR_ARCHITECTURE%\" == \"AMD64\" (SET WINBIT=x64) ELSE IF \"%PROCESSOR_ARCHITEW6432%\" == \"AMD64\" SET WINBIT=x64\r\n" +
+				 		"IF %WINVER% LSS 5.1 (\r\n" +
+				 		"	ECHO Sorry, timedicer cannot run under this version of Windows %WINVER%-%WINBIT%.\r\n" +
+				 		"	SET el=12\r\n" +
+				 		"	GOTO :endd\r\n" +
+				 		")\r\n" +
+				 		"REM Set VSHADOWVER appropriately for the vshadow-n-[bit].exe programs\r\n" +
+				 		"IF %WINVER%==5.1 SET VSHADOWVER=xp&&SET WINBIT=x86\r\n" +
+				 		"IF %WINVER%==5.2 SET VSHADOWVER=2003&&SET WINBIT=x86\r\n" +
+				 		"IF %WINVER%==6.0 SET VSHADOWVER=2008\r\n" +
+				 		"IF %WINVER%==6.1 SET VSHADOWVER=2008-r2\r\n" +
+				 		"\r\n" +
+				 		"\r\n" +
+				 		"REM -------------------------------------------------------------------------------\r\n" +
+				 		"	 ECHO About to check for vshadow-%VSHADOWVER%-%WINBIT%.exe\r\n" +
+				 		"     SET el=0\r\n" +
+				 		"	REM CALL :file_check vshadow-%VSHADOWVER%-%WINBIT%.exe http://edgylogic.com/blog/vshadow-exe-versions %el%\r\n" +
+				 		"	REM IF ERRORLEVEL 1 SET el=5&&GOTO :endd\r\n" +
+				 		"	 ECHO About to check for dosdev.exe\r\n" +
+				 		"    REM CALL :file_check dosdev.exe http://www.ltr-data.se/files/dosdev.zip %el%\r\n" +
+				 		"	REM IF ERRORLEVEL 1 SET el=5&&GOTO :endd\r\n" +
+				 		"	IF %el% GEQ 1 (\r\n" +
+				 		"		ECHO Backup will continue but with Volume Shadow Services disabled.\r\n" +
+				 		"		SET vss=n\r\n" +
+				 		"		SET el=0\r\n" +
+				 		"        GOTO :endd\r\n" +
+				 		"	)\r\n" +
+				 		"IF /I \"%vss%\" == \"y\" (\r\n" +
+				 		"	REM allowed status for shadow writers is 1 (stable) or 5 (waiting for completion) - see http://msdn.microsoft.com/en-us/library/aa384979%28VS.85%29.aspx\r\n" +
+				 		"    SET VSSNOTREADY = 0\r\n" +
+				 		"	\"%runfrom%\\vshadow-%VSHADOWVER%-%WINBIT%.exe\" -ws|\"%runfrom%\\ssed.exe\" -n -e \"/Status: [1|5]/p\"|\"%runfrom%\\ssed.exe\" -n \"$=\">%TEMP%\\TimeDicer-vsswriters_status.txt\r\n" +
+				 		"	FOR /F \"usebackq\" %%A IN ('%TEMP%\\TimeDicer-vsswriters_status.txt') DO set VSSNOTREADY=%%~zA\r\n" +
+				 		"	IF %VSSNOTREADY LEQ 0 (\r\n" +
+				 		"		ECHO Volume Shadow Writer[s] not ready, aborting...\r\n" +
+				 		"		SET el=3\r\n" +
+				 		"		GOTO :endd\r\n" +
+				 		"	)\r\n" +
+				 		"	REM IF ERRORLEVEL 1 SET el=107&&GOTO :endd\r\n" +
+				 		"	REM IF %quiet% == n ECHO Volume Shadow Service is available and will be used\r\n" +
+				 		") ELSE (\r\n" +
+				 		"	REM prevent any mapping if vss is off\r\n" +
+				 		"	SET mapdrive=%intSettingsLast%\r\n" +
+				 		"	ECHO Volume Shadow Service will not be used\r\n" +
+				 		")\r\n" +
+				 		"\r\n" +
+				 		"IF /I \"%vss%\" == \"y\" (\r\n" +
+				 		"SETLOCAL ENABLEEXTENSIONS DISABLEDELAYEDEXPANSION\r\n" +
+				 		"REM ---- Tidy up before starting the volume shadowing and backup ----\r\n" +
+				 		"REM delete any existing shadow copies  - there should not normally be any, but can be if a previous backup failed\r\n" +
+				 		"IF /I \"%vss%\" == \"y\" (\r\n" +
+				 		"	IF ERRORLEVEL 1 SET el=109&&GOTO :endd\r\n" +
+				 		"	 ECHO About to delete any existing shadow copies\r\n" +
+				 		"	ECHO y|\"%runfrom%\\vshadow-%VSHADOWVER%-%WINBIT%.exe\" -da>nul\r\n" +
+				 		"	IF ERRORLEVEL 1 (\r\n" +
+				 		"		 ECHO Error occurred: testing for administrator permissions\r\n" +
+				 		"		MKDIR \"%windir%\\system32\\test\" 2>nul\r\n" +
+				 		"		IF ERRORLEVEL 1 (\r\n" +
+				 		"			REM not running as administrator, this is cause of failure\r\n" +
+				 		"			ECHO No administrator permissions\r\n" +
+				 		"			SET /A el=11\r\n" +
+				 		"		) ELSE (\r\n" +
+				 		"			REM running as administrator, there is a problem with vshadow\r\n" +
+				 		"			RMDIR \"%windir%\\system32\\test\"\r\n" +
+				 		"			SET /A el=7\r\n" +
+				 		"		)\r\n" +
+				 		"		GOTO :endd\r\n" +
+				 		"	)\r\n" +
+				 		"    ECHO Deleted any existing shadow copies\r\n" +
+				 		")\r\n" +
+				 		"REM ---- Do the backup ----\r\n" +
+				 		"SET ACTIONERR=0\r\n" +
+				 		"IF /I \"%vss%\" EQU \"y\" (\r\n" +
+				 		"	ECHO Cloning ^(as %mapdrive%^) started %DATE% %TIME%\r\n" +
+				 		"	ECHO.\r\n" +
+				 		"	ECHO Summary ^(details follow further below^):\r\n" +
+				 		")\r\n" +
+				 		"	IF ERRORLEVEL 1 SET el=111&&GOTO :endd\r\n" +
+				 		"	REM ---- Run vshadow, which will create shadow copy, run timedicer-action.bat, then delete shadow copy ----\r\n" +
+				 		"	ECHO About to run 'timedicer-action.bat' in VSS mode\r\n" +
+				 		"	SET el = 0 \r\n" +
+				 		"	\"%runfrom%\\vshadow-%VSHADOWVER%-%WINBIT%.exe\" -script=%TEMP%TimeDicer-vss-setvar.cmd -exec=%command%  %unit%  \r\n" +
+				 		"	IF ERRORLEVEL 1 set el=1 \r\n" +
+				 		"    ECHO Returned from running 'timedicer-action.bat' in VSS mode __ %el% ___ \r\n" +
+				 		")\r\n" +
+				 		"ENDLOCAL\r\n" +
+				 		"\r\n" +
+				 		":endd\r\n" +
+				 		"IF %el% GEQ 1 SET ERRORLEVEL=1  \r\n";
+
+
+
+	        File scriptFile2 = null;
+	        FileWriter fileWriter2 = null;
+	        try {
+	            scriptFile2 = File.createTempFile("processExecutor",".bat", null);
+	            fileWriter2 = new FileWriter(scriptFile2);
+	            fileWriter2.write(script2);
+	        } finally {
+	            if (fileWriter2 != null) {
+	                fileWriter2.close();
+	            }
+	        }
+	        scriptFile2.setExecutable(true);
+	        return scriptFile2;
+
+	 	}
+	 	else{
+	        String[] commandArray = new String[commandList.size()];
+	        commandArray = commandList.toArray(commandArray);
+
+	        File scriptFile2 = null;
+	        FileWriter fileWriter2 = null;
+	        try {
+	            scriptFile2 = File.createTempFile("processExecutor",".sh", null);
+	            fileWriter2 = new FileWriter(scriptFile2);
+	            fileWriter2.write(commandArray.toString());
+	        } finally {
+	            if (fileWriter2 != null) {
+	                fileWriter2.close();
+	            }
+	        }
+	        scriptFile2.setExecutable(true);
+	        return scriptFile2;
+	 	}
+
+	 	//return returnValue;
+
 }
 
+}
 
 

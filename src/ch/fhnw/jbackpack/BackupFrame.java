@@ -143,6 +143,11 @@ public class BackupFrame extends javax.swing.JFrame {
                 KeyStroke.getKeyStroke(KeyEvent.VK_O, menuShortcutKeyMask));
         saveProfileMenuItem.setAccelerator(
                 KeyStroke.getKeyStroke(KeyEvent.VK_S, menuShortcutKeyMask));
+        saveCommandMenuItem.setAccelerator(
+                KeyStroke.getKeyStroke(KeyEvent.VK_C, menuShortcutKeyMask));
+        if (CurrentOperatingSystem.OS == OperatingSystem.Windows)
+        	runPutty.setAccelerator(
+                KeyStroke.getKeyStroke(KeyEvent.VK_R, menuShortcutKeyMask));
         quitMenuItem.setAccelerator(
                 KeyStroke.getKeyStroke(KeyEvent.VK_Q, menuShortcutKeyMask));
 
@@ -158,6 +163,11 @@ public class BackupFrame extends javax.swing.JFrame {
                     "BackupFrame.recentProfilesMenu.mnemonic").charAt(0));
             saveProfileMenuItem.setMnemonic(BUNDLE.getString(
                     "BackupFrame.saveProfileMenuItem.mnemonic").charAt(0));
+            saveCommandMenuItem.setMnemonic(BUNDLE.getString(
+                    "BackupFrame.saveCommandMenuItem.mnemonic").charAt(0));
+            if (CurrentOperatingSystem.OS == OperatingSystem.Windows)
+            	runPutty.setMnemonic(BUNDLE.getString(
+                    "BackupFrame.runPutty.mnemonic").charAt(0));
             preferencesMenuItem.setMnemonic(BUNDLE.getString(
                     "BackupFrame.preferencesMenuItem.mnemonic").charAt(0));
             quitMenuItem.setMnemonic(BUNDLE.getString(
@@ -245,6 +255,8 @@ public class BackupFrame extends javax.swing.JFrame {
         openProfileMenuItem = new javax.swing.JMenuItem();
         recentProfilesMenu = new javax.swing.JMenu();
         saveProfileMenuItem = new javax.swing.JMenuItem();
+        saveCommandMenuItem = new javax.swing.JMenuItem();
+        runPutty = new javax.swing.JMenuItem();
         jSeparator1 = new javax.swing.JPopupMenu.Separator();
         preferencesMenuItem = new javax.swing.JMenuItem();
         jSeparator2 = new javax.swing.JPopupMenu.Separator();
@@ -315,6 +327,23 @@ public class BackupFrame extends javax.swing.JFrame {
             }
         });
         fileMenu.add(saveProfileMenuItem);
+        saveCommandMenuItem.setIcon(new javax.swing.ImageIcon(getClass().getResource("/ch/fhnw/jbackpack/icons/16x16/filesaveas.png"))); // NOI18N
+        saveCommandMenuItem.setText("Save as Command.."); // NOI18N
+        saveCommandMenuItem.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                saveCommandMenuItemActionPerformed(evt);
+            }
+        });
+        fileMenu.add(saveCommandMenuItem);
+        runPutty.setIcon(new javax.swing.ImageIcon(getClass().getResource("/ch/fhnw/jbackpack/icons/16x16/filesaveas.png"))); // NOI18N
+        runPutty.setText("Save as Command.."); // NOI18N
+        runPutty.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                runPuttyActionPerformed(evt);
+            }
+        });
+        if (CurrentOperatingSystem.OS == OperatingSystem.Windows)
+        	fileMenu.add(runPutty);
         fileMenu.add(jSeparator1);
 
         preferencesMenuItem.setIcon(new javax.swing.ImageIcon(getClass().getResource("/ch/fhnw/jbackpack/icons/16x16/configure.png"))); // NOI18N
@@ -367,7 +396,36 @@ public class BackupFrame extends javax.swing.JFrame {
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
-    private void quitMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_quitMenuItemActionPerformed
+    protected void runPuttyActionPerformed(ActionEvent evt) {
+		// TODO Auto-generated method stub
+        if (CurrentOperatingSystem.OS == OperatingSystem.Windows) {
+        	try{
+            ProcessExecutor processExecutor = new ProcessExecutor();
+            int returnValue = processExecutor.executeScript(
+                    "cd "+FileTools.JBACKPACK_HOME+FileTools.LINE_SEPARATOR
+                    +"putty.exe"+FileTools.LINE_SEPARATOR
+                    );
+            if (returnValue !=0) LOGGER.warning("Cannot run putty well");
+        	}catch(Exception ex){
+        		LOGGER.warning("Cannot run putty:"+ex);
+        	}
+
+        	/*
+            FileDialog fileDialog =
+                    new FileDialog(this, title, FileDialog.SAVE);
+            fileDialog.setDirectory(profilesPath);
+            fileDialog.setVisible(true);
+            String directory = fileDialog.getDirectory();
+            String file = fileDialog.getFile();
+            if ((directory != null) && (file != null)) {
+                selectedFile = new File(directory + file);
+            }
+            */
+        }
+
+	}
+
+	private void quitMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_quitMenuItemActionPerformed
         exit();
     }//GEN-LAST:event_quitMenuItemActionPerformed
 
@@ -375,6 +433,47 @@ public class BackupFrame extends javax.swing.JFrame {
         exit();
     }//GEN-LAST:event_formWindowClosed
 
+    private void saveCommandMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_saveProfileMenuItemActionPerformed
+        String title = "Save_Command";
+
+        File selectedFile = null;
+        if (CurrentOperatingSystem.OS == OperatingSystem.Mac_OS_X) {
+            FileDialog fileDialog =
+                    new FileDialog(this, title, FileDialog.SAVE);
+            fileDialog.setDirectory(profilesPath);
+            fileDialog.setVisible(true);
+            String directory = fileDialog.getDirectory();
+            String file = fileDialog.getFile();
+            if ((directory != null) && (file != null)) {
+                selectedFile = new File(directory + file);
+            }
+        } else {
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setDialogTitle(title);
+            fileChooser.setCurrentDirectory(new File(profilesPath));
+            if (JFileChooser.APPROVE_OPTION
+                    == fileChooser.showSaveDialog(this)) {
+                selectedFile = fileChooser.getSelectedFile();
+            }
+        }
+        if (selectedFile != null) {
+            //FileTools.createBackup(source, commandList);
+            try {
+            	backupMainPanel.createJob(selectedFile);
+                //FileOutputStream fileOutputStream =
+                //        new FileOutputStream(selectedFile);
+                JOptionPane.showMessageDialog(this,
+                        "Command Saved",
+                        BUNDLE.getString("Information"),
+                        JOptionPane.INFORMATION_MESSAGE,
+                        IconManager.INFORMATION_ICON);
+            } catch (IOException ex) {
+                LOGGER.log(Level.SEVERE, null, ex);
+                savingProfileFailed(ex);
+            }
+        }
+
+    }
     private void saveProfileMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_saveProfileMenuItemActionPerformed
 
         String title = BUNDLE.getString("Save_Profile");
@@ -764,5 +863,7 @@ public class BackupFrame extends javax.swing.JFrame {
     private javax.swing.JMenuItem quitMenuItem;
     private javax.swing.JMenu recentProfilesMenu;
     private javax.swing.JMenuItem saveProfileMenuItem;
+    private javax.swing.JMenuItem saveCommandMenuItem;
+    private javax.swing.JMenuItem runPutty;
     // End of variables declaration//GEN-END:variables
 }

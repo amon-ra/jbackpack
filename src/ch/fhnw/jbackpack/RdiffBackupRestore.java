@@ -25,12 +25,7 @@ import ch.fhnw.util.OperatingSystem;
 import ch.fhnw.util.ProcessExecutor;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.FilenameFilter;
-import java.io.IOException;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -125,7 +120,7 @@ public class RdiffBackupRestore {
      * @throws IOException if the backup script could not be written to a temp
      * file
      */
-    public boolean backupViaFileSystem(File source, File destination,
+    public String backupViaFileSystem(File source, File destination,
             String tempDirPath, String excludes, String includes,
             boolean compressFiles, Long maxFileSize, Long minFileSize,
             boolean excludeDeviceFiles, boolean excludeFifos,
@@ -138,7 +133,7 @@ public class RdiffBackupRestore {
                 excludeDeviceFiles, excludeFifos, excludeOtherFileSystems,
                 excludeSockets, excludeSymlinks);
         commandList.add(destination.getPath());
-
+        String script;
         // execute backup command
 
 
@@ -148,13 +143,24 @@ public class RdiffBackupRestore {
                 commandList);
         // do NOT(!) store stdOut, it very often leads to:
         // java.lang.OutOfMemoryError: Java heap space
-        int returnValue =
-                FileTools.runBackup(processExecutor,  source.getPath(),commandList);
+        //int returnValue =
+        //        FileTools.runBackup(processExecutor,  source.getPath(),commandList);
+
+        if (CurrentOperatingSystem.OS != OperatingSystem.Windows)
+        {
+	        //String[] commandArray = new String[commandList.size()];
+	        //commandArray = commandList.toArray(commandArray);
+	        script = commandList.toString();
+	 		//returnValue = processExecutor.executeProcess(true, true, commandArray);
+        }else {
+        	script = createWindowsCommandScript(commandList,source);
+
+        }
 
         // cleanup
         deleteIncludeExcludeFiles();
-
-        return (returnValue == 0);
+        return script;
+        //return (returnValue == 0);
     }
 
     /**
@@ -182,6 +188,103 @@ public class RdiffBackupRestore {
      * @throws IOException if the backup script could not be written to a temp
      * file
      */
+    public String backupViaSSH(File source, String user, String host, String port,
+            String directory, String password, String tempDirPath,
+            String excludes, String includes, boolean compressFiles,
+            Long maxFileSize, Long minFileSize, boolean excludeDeviceFiles,
+            boolean excludeFifos, boolean excludeOtherFileSystems,
+            boolean excludeSockets, boolean excludeSymlinks)
+            throws IOException {
+
+        String script;
+        List<String> commandList;
+        if ((includes != null) && includes.length() > 0) {
+            includesFile = File.createTempFile("jbackpack_includes_", null);
+        } else {
+            includesFile = null;
+        }
+        if ((excludes != null) && excludes.length() > 0) {
+            excludesFile = File.createTempFile("jbackpack_excludes_", null);
+        } else {
+            excludesFile = null;
+        }
+        script = createIncludesExcludesScript(includes,excludes,includesFile,excludesFile,source);
+        if (CurrentOperatingSystem.OS != OperatingSystem.Windows){
+        	script = "#!/bin/sh" + LINE_SEPARATOR
+        			+"#=============="+LINE_SEPARATOR
+        			+script+LINE_SEPARATOR;
+        	// create command list
+    		//commandList.add(createCommandRemoteSchema(host,password)); //--remote-schema "plink.exe -i privatekey.ppk %s rdiff-backup --server"
+		    commandList = createBackupCommandList(source, includes,
+		            excludes, tempDirPath, maxFileSize, minFileSize, compressFiles,
+		            excludeDeviceFiles, excludeFifos, excludeOtherFileSystems,
+		            excludeSockets, excludeSymlinks);
+		    commandList.add("--remote-schema \"ssh -C -p"+port+" %s rdiff-backup --server\"");
+		    commandList.add(user + '@' + host + "::" + directory);
+		    /*
+	        // set level to OFF to prevent password leaking into
+	        // logfiles
+	        Logger logger = Logger.getLogger(
+	                ProcessExecutor.class.getName());
+	        Level level = logger.getLevel();
+	        logger.setLevel(Level.OFF);
+
+	        // do NOT(!) store stdOut, it very often leads to
+	        // java.lang.OutOfMemoryError: Java heap space
+	        returnValue = processExecutor.executeScript(
+	                false, true, backupScript, password);
+
+	//        // restore previous log level
+	        logger.setLevel(level);
+	        */
+        }
+        else{
+
+            	commandList = createBackupSshCommandList(source,
+            			includesFile,excludesFile,tempDirPath,
+            			maxFileSize, minFileSize, compressFiles,
+                        excludeDeviceFiles, excludeFifos, excludeOtherFileSystems,
+                        excludeSockets, excludeSymlinks,host,port,password);
+            	LOGGER.finest("Executing backup");
+    	        commandList.add(user + '@' + host + "::" + directory.replace('\\', '/'));
+    	        // do NOT(!) store stdOut, it very often leads to:
+    	        // java.lang.OutOfMemoryError: Java heap space
+
+        }
+        script = script + createSshCommandScript(commandList,source,user,host,password);
+        // cleanup
+        deleteIncludeExcludeFiles();
+
+        return script;
+    }
+
+
+    /**
+     * backs up the selected files via SSH
+     * @param source the directory to backup
+     * @param user the user name on the remote server
+     * @param host the host name of the remote server
+     * @param directory the remote backup directory
+     * @param password the password of the user on the remote server
+     * @param tempDirPath the path to the temporary directory or
+     * <tt>null</tt> if the system default should be used
+     * @param excludes the files to exclude
+     * @param includes the files to include
+     * @param compressFiles if <tt>true</tt>, most increment files are
+     * compressed
+     * @param maxFileSize the maximum file size or null if not set
+     * @param minFileSize the minimum file size or null if not set
+     * @param excludeDeviceFiles if <tt>true</tt>, device files are excluded
+     * @param excludeFifos if <tt>true</tt>, fifos are excluded
+     * @param excludeOtherFileSystems if <tt>true</tt>, other file systems are
+     * excluded
+     * @param excludeSockets if <tt>true</tt>, sockets are excluded
+     * @param excludeSymlinks if <tt>true</tt>, symlinks are excluded
+     * @return if rdiff-backup process was successful
+     * @throws IOException if the backup script could not be written to a temp
+     * file
+     */
+    /*
     public boolean backupViaSSH(File source, String user, String host,
             String directory, String password, String tempDirPath,
             String excludes, String includes, boolean compressFiles,
@@ -206,8 +309,11 @@ public class RdiffBackupRestore {
 		        stringBuilder.append(command);
 		        stringBuilder.append(' ');
 		    }
+		    //Multiline String in bash  STRING=$( cat <<EOF"
 		    //In windows this must use plink
-	        String backupScript = "#!/usr/bin/expect -f" + LINE_SEPARATOR
+	        String backupScript = "#!/usr/bin/sh" +
+	        		"STRING=$( cat <<EOF" +
+	        		"#!/usr/bin/expect -f" + LINE_SEPARATOR
 	                + "set password [lindex $argv 0]" + LINE_SEPARATOR
 	                + "spawn -ignore HUP "
 	                + stringBuilder.toString() + LINE_SEPARATOR
@@ -227,7 +333,9 @@ public class RdiffBackupRestore {
 	                + "}" + LINE_SEPARATOR
 	                + "set ret [lindex [wait] 3]" + LINE_SEPARATOR
 	                + "puts \"return value: $ret\"" + LINE_SEPARATOR
-	                + "exit $ret";
+	                + "exit $ret" + LINE_SEPARATOR
+	                + "EOF" + LINE_SEPARATOR
+	                + ") ";
 
 	        	Logger.getLogger(JBackpack.class.getName()).log(
 	                Level.INFO,
@@ -264,7 +372,241 @@ public class RdiffBackupRestore {
 
         return (returnValue == 0);
     }
+	*/
+    public String createIncludesExcludesScript(String includes,String excludes,File includesFile, File excludesFile,File source){
+        String script="";
 
+        String drive = source.getPath().substring(0, 2);
+        if ((includes != null) && includes.length() > 0) {
+          if (FileTools.DO_VSS)
+        	  writeTempFile(includesFile, includes.replace(drive, FileTools.mapdrive));
+          else
+        	  writeTempFile(includesFile, includes);
+          try{
+		  FileInputStream fstream = new FileInputStream(includesFile);
+		  // Get the object of DataInputStream
+		  DataInputStream in = new DataInputStream(fstream);
+		  BufferedReader br = new BufferedReader(new InputStreamReader(in));
+		  String strLine;
+		  //Read File Line By Line
+		  while ((strLine = br.readLine()) != null)   {
+			script = script + "echo \"" + strLine.replace("\"","\\\"") +"\" >>"+includesFile.getPath()+LINE_SEPARATOR;
+
+			}
+          }catch(Exception e){
+        	 LOGGER.warning("");
+          }
+		}
+        if ((excludes != null) && excludes.length() > 0) {
+         if (FileTools.DO_VSS)
+          	writeTempFile(excludesFile, excludes.replace(drive, FileTools.mapdrive));
+         else
+            writeTempFile(excludesFile, excludes);
+         try{
+	  	  FileInputStream fstream = new FileInputStream(excludesFile);
+		  // Get the object of DataInputStream
+		  DataInputStream in = new DataInputStream(fstream);
+		  BufferedReader br = new BufferedReader(new InputStreamReader(in));
+		  String strLine;
+	  	//Read File Line By Line
+		  while ((strLine = br.readLine()) != null)   {
+				script = script + "echo \"" + strLine.replace("\"","\\\"") +"\" >>"+excludesFile.getPath()+LINE_SEPARATOR;
+
+				}
+			}catch(Exception e){
+	        	 LOGGER.warning("");
+           }
+         }
+      return script;
+    }
+    public String createSshCommandScript (List<String> commandList,File source,String user,
+    			String host,String password) throws IOException{
+    	String script="";
+    	if (CurrentOperatingSystem.OS != OperatingSystem.Windows){
+		    // wrap command list with backup script
+		    StringBuilder stringBuilder = new StringBuilder();
+		    for (String command : commandList) {
+		        stringBuilder.append(command);
+		        stringBuilder.append(' ');
+		    }
+		    File scriptFile = null;
+		    scriptFile = File.createTempFile("processExecutor",".sh", null);
+		    scriptFile.setExecutable(true);
+
+		    //Multiline String in bash  STRING=$( cat <<EOF"
+		    //In windows this must use plink
+	        script ="nscript=`grep -n \"#expectscript==============\" $0 | cut -d\":\" -f1`"+LINE_SEPARATOR
+	        		+"tail +$((nscript+7)) $0 > "+scriptFile+LINE_SEPARATOR
+	        		+"chmod +x "+scriptFile+LINE_SEPARATOR
+	        		+scriptFile+ LINE_SEPARATOR;
+	                // error cuando es null + "rm "+includesFile.getPath()+" "+ excludesFile.getPath()+ LINE_SEPARATOR;
+	        if (includesFile != null)
+	        		script = script+"rm "+includesFile.getPath()+" "+ excludesFile.getPath()+ LINE_SEPARATOR;
+	        else script = script+LINE_SEPARATOR;
+	        if (excludesFile != null)
+	        		script = script+"rm "+excludesFile.getPath()+ LINE_SEPARATOR;
+	        else script = script+LINE_SEPARATOR;
+	        script = script+"exit 0"+ LINE_SEPARATOR
+        			+"#!/usr/bin/expect -f" + LINE_SEPARATOR
+	                + "set password \""+password+"\"" + LINE_SEPARATOR
+	                + "spawn -ignore HUP "
+	                + stringBuilder.toString() + LINE_SEPARATOR
+	                + "while 1 {" + LINE_SEPARATOR
+	                + "    expect {" + LINE_SEPARATOR
+	                + "        eof {" + LINE_SEPARATOR
+	                + "            break" + LINE_SEPARATOR
+	                + "        }" + LINE_SEPARATOR
+	                + "        \"continue connecting*\" {" + LINE_SEPARATOR
+	                + "            send \"yes\r\"" + LINE_SEPARATOR
+	                + "        }" + LINE_SEPARATOR
+	                + "        \"assword:\" {"
+	                + LINE_SEPARATOR
+	                + "            send \"$password\r\"" + LINE_SEPARATOR
+	                + "        }" + LINE_SEPARATOR
+	                + "    }" + LINE_SEPARATOR
+	                + "}" + LINE_SEPARATOR
+	                + "set ret [lindex [wait] 3]" + LINE_SEPARATOR
+	                + "puts \"return value: $ret\"" + LINE_SEPARATOR
+	                + "exit $ret" + LINE_SEPARATOR;
+
+	                // error cuando es null + "rm "+includesFile.getPath()+" "+ excludesFile.getPath()+ LINE_SEPARATOR;
+
+    	}
+    	else{
+
+    		script = createWindowsCommandScript(commandList,source);
+
+	 	 	}
+    	return script;
+
+    }
+
+    public String createWindowsCommandScript(List<String> commandList,File source) throws IOException{
+        String stringsource = source.getPath();
+        String script="";
+ 	 	if (FileTools.DO_VSS)
+ 	 	{
+ 			 StringBuilder stringBuilder = new StringBuilder();
+ 			    for (String command : commandList) {
+ 			        stringBuilder.append(command);
+ 			        stringBuilder.append(' ');
+ 			    }
+ 			    //Dividir en 2
+ 			    	String script1 = File.createTempFile("processExecutor",".bat", null).getPath();
+ 				    String script2 = "echo sessions="+FileTools.USER_HOME+"\\.jbackpack\\ssh\\sessions >\""+FileTools.USER_HOME+"\\.jbackpack\\putty.conf\""+LINE_SEPARATOR
+ 		 				    +"echo sshhostkeys="+FileTools.USER_HOME+"\\.jbackpack\\ssh\\hostkeys >>\""+FileTools.USER_HOME+"\\.jbackpack\\putty.conf\" "+LINE_SEPARATOR
+ 		 				    +"echo seedfile="+FileTools.USER_HOME+"\\.jbackpack\\putty.rnd >>\""+FileTools.USER_HOME+"\\.jbackpack\\putty.conf\""+LINE_SEPARATOR
+ 		 				    +"echo sessionsuffix=.session >>\""+FileTools.USER_HOME+"\\.jbackpack\\putty.conf\""+LINE_SEPARATOR
+ 		 				    +"echo keysuffix=.hostkey >>\""+FileTools.USER_HOME+"\\.jbackpack\\putty.conf\""+LINE_SEPARATOR
+ 		 				    +"echo jumplist="+FileTools.USER_HOME+"\\.jbackpack\\puttyjumplist.txt >> \""+FileTools.USER_HOME+"\\.jbackpack\\putty.conf\""+LINE_SEPARATOR
+ 				    +"@ECHO off"+LINE_SEPARATOR +"echo" + " REM ---- timedicer-action.bat script creation ----".replace("\"","\\\"")+" >"+script1+LINE_SEPARATOR
+ 				    + "echo" + " cd "+FileTools.USER_HOME+"\\.jbackpack >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + " REM map the shadow device to drive m:".replace("\"","\\\"")+" >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + " call "+FileTools.TEMP_DIR+"\\TimeDicer-vss-setvar.cmd".replace("\"","\\\"")+" >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + " \""+FileTools.USER_HOME+"\\.jbackpack\\dosdev.exe\" "+FileTools.mapdrive+" %%SHADOW_DEVICE_1%% ".replace("\"","\\\"")+" >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + " REM cycnet echo command to do backup".replace("\"","\\\"")+" >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + " SET el=0 ".replace("\"","\\\"")+" >>"+script1+LINE_SEPARATOR
+  				    + "echo" + " "+stringBuilder.toString().replace("%s","%%%%s")+" >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + " IF ERRORLEVEL 1 ( ".replace("\"","\\\"")+" >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + "	set el=1".replace("\"","\\\"")+" >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + "	REM delete shadow device drive mapping".replace("\"","\\\"")+" >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + "	dir "+FileTools.mapdrive+"\\ ".replace("\"","\\\"")+" >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + " )  >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + " \""+FileTools.USER_HOME+"\\.jbackpack\\dosdev.exe\" -r -d "+FileTools.mapdrive+" ".replace("\"","\\\"")+" >>"+script1+LINE_SEPARATOR
+ 				    + "echo" + " if %%el%% neq 0 exit 1 >> "+script1+LINE_SEPARATOR
+ 				    + "echo exit 0 >>" +script1+LINE_SEPARATOR;
+
+ 			        script = script2+
+ 				 		"REM ---- Change current drive ----"+LINE_SEPARATOR+
+ 				 		"REM We need ssed.exe,dosdev.exe"+LINE_SEPARATOR+
+ 				 		"REM Usage: vss.bat runfrom temp mapdrive: copydrive:"+LINE_SEPARATOR+
+ 				 		"REM For reasons that are undocumented - but probably related to the location of"+LINE_SEPARATOR+
+ 				 		"REM snapshot data - vshadow must be run with a local, or the snapshot source,"+LINE_SEPARATOR+
+ 				 		"REM drive as the current drive on the command line. So we must switch to source"+LINE_SEPARATOR+
+ 				 		"REM drive and ensure that all calls to external programs are mapped back to the"+LINE_SEPARATOR+
+ 				 		"REM original location  - which may for instance be on a network share"+LINE_SEPARATOR+
+ 				 		"SET runfrom="+FileTools.USER_HOME+"\\.jbackpack"+LINE_SEPARATOR+
+ 				 		"SET vss=y"+LINE_SEPARATOR+
+ 				 		"SET TEMP=" +FileTools.TEMP_DIR + ""+LINE_SEPARATOR+
+ 				 		"SET mapdrive="+FileTools.mapdrive+""+LINE_SEPARATOR+
+ 				 		"SET unit="+stringsource.substring(0,2)+""+LINE_SEPARATOR+
+ 				 		"SET command=\""+script1+"\""+LINE_SEPARATOR+
+ 				 		"cd %runfrom%"+LINE_SEPARATOR+
+ 				 		"ECHO ------------------------------------VSS--------------------------------------------------"+LINE_SEPARATOR+
+ 				 		"REM ----------"+LINE_SEPARATOR+
+ 				 		"REM Determine Windows version WINVER 5.0=2000, 5.1=XP, 5.2=2003, 6.0=Vista, 6.1=7/2008"+LINE_SEPARATOR+
+ 				 		"FOR /F \"tokens=2* delims=[]\" %%A IN ('VER') DO FOR /F \"tokens=2,3 delims=. \" %%B IN (\"%%A\") DO SET WINVER=%%B.%%C"+LINE_SEPARATOR+
+ 				 		"REM Determine Windows 32-bit (x86) or 64-bit (x64) WINBIT"+LINE_SEPARATOR+
+ 				 		"SET WINBIT=x86&&IF \"%PROCESSOR_ARCHITECTURE%\" == \"AMD64\" (SET WINBIT=x64) ELSE IF \"%PROCESSOR_ARCHITEW6432%\" == \"AMD64\" SET WINBIT=x64"+LINE_SEPARATOR+
+ 				 		"IF %WINVER% LSS 5.1 ("+LINE_SEPARATOR+
+ 				 		"	ECHO Sorry, timedicer cannot run under this version of Windows %WINVER%-%WINBIT%."+LINE_SEPARATOR+
+ 				 		"	SET el=12"+LINE_SEPARATOR+
+ 				 		"	GOTO :endd"+LINE_SEPARATOR+
+ 				 		")"+LINE_SEPARATOR+
+ 				 		"REM Set VSHADOWVER appropriately for the vshadow-n-[bit].exe programs"+LINE_SEPARATOR+
+ 				 		"IF %WINVER%==5.1 SET VSHADOWVER=xp&&SET WINBIT=x86"+LINE_SEPARATOR+
+ 				 		"IF %WINVER%==5.2 SET VSHADOWVER=2003&&SET WINBIT=x86"+LINE_SEPARATOR+
+ 				 		"IF %WINVER%==6.0 SET VSHADOWVER=2008"+LINE_SEPARATOR+
+ 				 		"IF %WINVER%==6.1 SET VSHADOWVER=2008-r2"+LINE_SEPARATOR+
+ 				 		""+LINE_SEPARATOR+
+ 				 		""+LINE_SEPARATOR+
+ 				 		"REM -------------------------------------------------------------------------------"+LINE_SEPARATOR+
+ 				 		"	 ECHO About to check for vshadow-%VSHADOWVER%-%WINBIT%.exe"+LINE_SEPARATOR+
+ 				 		"     SET el=0"+LINE_SEPARATOR+
+ 				 		"IF /I \"%vss%\" == \"y\" ("+LINE_SEPARATOR+
+ 				 		"	REM allowed status for shadow writers is 1 (stable) or 5 (waiting for completion) - see http://msdn.microsoft.com/en-us/library/aa384979%28VS.85%29.aspx"+LINE_SEPARATOR+
+ 				 		"    SET VSSNOTREADY = 0"+LINE_SEPARATOR+
+ 				 		"	\"%runfrom%\\vshadow-%VSHADOWVER%-%WINBIT%.exe\" -ws|\"%runfrom%\\ssed.exe\" -n -e \"/Status: [1|5]/p\"|\"%runfrom%\\ssed.exe\" -n \"$=\">%TEMP%\\TimeDicer-vsswriters_status.txt"+LINE_SEPARATOR+
+ 				 		"	FOR /F \"usebackq\" %%A IN ('%TEMP%\\TimeDicer-vsswriters_status.txt') DO set VSSNOTREADY=%%~zA"+LINE_SEPARATOR+
+ 				 		"	IF %VSSNOTREADY LEQ 0 ("+LINE_SEPARATOR+
+ 				 		"		ECHO Volume Shadow Writer[s] not ready, aborting..."+LINE_SEPARATOR+
+ 				 		"		SET el=3"+LINE_SEPARATOR+
+ 				 		"		GOTO :endd"+LINE_SEPARATOR+
+ 				 		"	)"+LINE_SEPARATOR+
+ 				 		"	ECHO Volume Shadow Service is available and will be used"+LINE_SEPARATOR+
+ 				 		"REM ---- Tidy up before starting the volume shadowing and backup ----"+LINE_SEPARATOR+
+ 				 		"REM delete any existing shadow copies  - there should not normally be any, but can be if a previous backup failed"+LINE_SEPARATOR+
+ 				 		"	ECHO About to delete any existing shadow copies"+LINE_SEPARATOR+
+ 				 		"	ECHO y|\"%runfrom%\\vshadow-%VSHADOWVER%-%WINBIT%.exe\" -da>nul"+LINE_SEPARATOR+
+ 				 		"	IF ERRORLEVEL 1 ("+LINE_SEPARATOR+
+ 				 		"		 ECHO Error occurred: testing for administrator permissions"+LINE_SEPARATOR+
+ 				 		"		MKDIR \"%windir%\\system32\\test\" 2>nul"+LINE_SEPARATOR+
+ 				 		"		IF ERRORLEVEL 1 ("+LINE_SEPARATOR+
+ 				 		"			REM not running as administrator, this is cause of failure"+LINE_SEPARATOR+
+ 				 		"			ECHO No administrator permissions"+LINE_SEPARATOR+
+ 				 		"			SET /A el=11"+LINE_SEPARATOR+
+ 				 		"		) ELSE ("+LINE_SEPARATOR+
+ 				 		"			REM running as administrator, there is a problem with vshadow"+LINE_SEPARATOR+
+ 				 		"			RMDIR \"%windir%\\system32\\test\""+LINE_SEPARATOR+
+ 				 		"			SET /A el=7"+LINE_SEPARATOR+
+ 				 		"		)"+LINE_SEPARATOR+
+ 				 		"		GOTO :endd"+LINE_SEPARATOR+
+ 				 		"	)"+LINE_SEPARATOR+
+ 				 		"    ECHO Deleted any existing shadow copies"+LINE_SEPARATOR+
+ 				 		"REM ---- Do the backup ----"+LINE_SEPARATOR+
+ 				 		"SET ACTIONERR=0"+LINE_SEPARATOR+
+ 				 		"	ECHO Cloning ^(as %mapdrive%^) started %DATE% %TIME%"+LINE_SEPARATOR+
+ 				 		"	ECHO."+LINE_SEPARATOR+
+ 				 		"	ECHO Summary ^(details follow further below^):"+LINE_SEPARATOR+
+ 				 		"	REM ---- Run vshadow, which will create shadow copy, run timedicer-action.bat, then delete shadow copy ----"+LINE_SEPARATOR+
+ 				 		"	ECHO About to run 'timedicer-action.bat' in VSS mode"+LINE_SEPARATOR+
+ 				 		"	IF %el% neq 0 GOTO :endd "+LINE_SEPARATOR+
+ 				 		"   del "+FileTools.TEMP_DIR+"rdiff-backup.log "+LINE_SEPARATOR+
+ 				 		"	\"%runfrom%\\vshadow-%VSHADOWVER%-%WINBIT%.exe\" -script=%TEMP%TimeDicer-vss-setvar.cmd -exec=%command%  %unit%  "+LINE_SEPARATOR+
+ 				 		"	IF ERRORLEVEL 1 set el=1 "+LINE_SEPARATOR+
+ 				 		"    ECHO Returned from running 'timedicer-action.bat' in VSS mode __ %el% ___ "+LINE_SEPARATOR+
+ 				 		")"+LINE_SEPARATOR+
+ 				 		""+LINE_SEPARATOR+
+ 				 		":endd"+LINE_SEPARATOR+
+ 				 		"echo Backup Finished ERROR: %el%"+LINE_SEPARATOR;
+ 			        if (includesFile != null)
+ 				 		script = script+"del "+includesFile.getPath()+LINE_SEPARATOR;
+ 			        if (excludesFile != null)
+ 				 		script=script+"del "+excludesFile.getPath()+LINE_SEPARATOR;
+ 				 	script=script+"IF %el% neq 0 exit 1"+LINE_SEPARATOR;
+ 	 	}
+ 	 	return script;
+    }
 
 	/**
      * Restores the selected files
@@ -447,8 +789,10 @@ public class RdiffBackupRestore {
         HashMap<String, String> sessionStatistics =
                 new HashMap<String, String>();
         if (LOGGER.isLoggable(Level.FINEST)) LOGGER.finest(backupDirectory);
-        String sessionName = "session_statistics"
-                + getCurrentMirror(backupDirectory).getName().replaceAll(
+        File mirror =getCurrentMirror(backupDirectory);
+        String sessionName="";
+        if (mirror!= null) sessionName = "session_statistics"
+                + mirror.getName().replaceAll(
                 "current_mirror", "");
 
         FileReader fileReader = null;
@@ -475,8 +819,9 @@ public class RdiffBackupRestore {
                     sessionStatistics.put(tokens[0], tokens[1]);
                 }
             }
-        } catch (IOException ex) {
+        } catch (Exception ex) {
             LOGGER.log(Level.INFO, "could not load increment size", ex);
+            return sessionStatistics;
         } finally {
             if (fileReader != null) {
                 try {
@@ -497,11 +842,11 @@ public class RdiffBackupRestore {
     }
 
     private List<String> createBackupSshCommandList(File source,
-            String includes, String excludes, String tempDirPath,
+            File includesFile, File excludesFile, String tempDirPath,
             Long maxFileSize, Long minFileSize, boolean compressFiles,
             boolean excludeDeviceFiles, boolean excludeFifos,
             boolean excludeOtherFileSystems, boolean excludeSockets,
-            boolean excludeSymlinks,String host, String password) throws IOException {
+            boolean excludeSymlinks,String host,String port, String password) throws IOException {
 
         // reset status
         processExecutor = new ProcessExecutor();
@@ -512,26 +857,13 @@ public class RdiffBackupRestore {
         processExecutor.addPropertyChangeListener(
                 new MyPropertyChangeListener());
 
-        // execute the backup process
-        if ((includes != null) && includes.length() > 0) {
-            includesFile = File.createTempFile("jbackpack_includes_", null);
-        } else {
-            includesFile = null;
-        }
-        if ((excludes != null) && excludes.length() > 0) {
-            excludesFile = File.createTempFile("jbackpack_excludes_", null);
-        } else {
-            excludesFile = null;
-        }
-        
         String drive = source.getPath().substring(0, 2);
         List<String> commandList;
-        if (FileTools.DO_VSS)
-        	commandList = createCommandList(tempDirPath,includesFile, includes.replace(drive, FileTools.mapdrive),
-        		excludesFile, excludes.replace(drive, FileTools.mapdrive));
-        else 
-        	commandList = createCommandList(tempDirPath,includesFile, includes,
-            		excludesFile, excludes);
+
+        commandList = createCommandList(tempDirPath,includesFile,excludesFile);
+
+
+
         //commandList.add(createCommandRemoteSchema(host,password)); //--remote-schema "plink.exe -i privatekey.ppk %s rdiff-backup --server"
         if (maxFileSize != null) {
             commandList.add("--max-file-size");
@@ -563,25 +895,27 @@ public class RdiffBackupRestore {
         String sourcePath;
         if (FileTools.DO_VSS)
         	sourcePath = source.getPath().replace(drive, FileTools.mapdrive);
-        else 
+        else
         	sourcePath = source.getPath();
         if (CurrentOperatingSystem.OS == OperatingSystem.Windows) {
             // Windows needs a path workaround. For more details see:
             // http://wiki.rdiff-backup.org/wiki/index.php/BackupToFromWindowsToLinux#Path_Workarounds
             commandList.add("--remote-schema");
         	if (password == null)
-        		commandList.add( "\""+FileTools.USER_HOME+"\\jbackpack\\plink.exe -i "+host+".ppk %s rdiff-backup --server\"");
+        		commandList.add( "\""+FileTools.USER_HOME+"\\.jbackpack\\plink.exe -batch -P "+port+" -i "+host+".ppk %s rdiff-backup --server\"");
         	else
-        		commandList.add( "\""+FileTools.USER_HOME+"\\jbackpack\\plink.exe -pw "+ password +" %s rdiff-backup --server\"");
+        		commandList.add( "\""+FileTools.USER_HOME+"\\.jbackpack\\plink.exe -batch -P "+port+" -pw "+ password +" %s rdiff-backup --server\"");
             sourcePath += '/';
-            commandList.add(sourcePath);
-            
+            commandList.add("\""+sourcePath+"\"");
+
         }
-        else 
-        	commandList.add(sourcePath);
+        else{
+        	commandList.add("--remote-schema \"ssh -p"+port+" %s rdiff-backup --server\"");
+        	commandList.add("\""+sourcePath+"\"");
+        }
         return commandList;
     }
-    
+
     //old function
     private List<String> createBackupCommandList(File source,
             String includes, String excludes, String tempDirPath,
@@ -615,7 +949,7 @@ public class RdiffBackupRestore {
         if (FileTools.DO_VSS)
         	commandList = createCommandList(tempDirPath,includesFile, includes.replace(drive, FileTools.mapdrive),
         		excludesFile, excludes.replace(drive, FileTools.mapdrive));
-        else 
+        else
         	commandList = createCommandList(tempDirPath,includesFile, includes,
             		excludesFile, excludes);
         //commandList.add(createCommandRemoteSchema(host,password)); //--remote-schema "plink.exe -i privatekey.ppk %s rdiff-backup --server"
@@ -649,7 +983,7 @@ public class RdiffBackupRestore {
         String sourcePath;
         if (FileTools.DO_VSS)
         	sourcePath = source.getPath().replace(drive, FileTools.mapdrive);
-        else 
+        else
         	sourcePath = source.getPath();
         if (CurrentOperatingSystem.OS == OperatingSystem.Windows) {
             // Windows needs a path workaround. For more details see:
@@ -657,11 +991,11 @@ public class RdiffBackupRestore {
             sourcePath += '/';
         }
 
-        commandList.add(sourcePath);
+        commandList.add("\""+sourcePath+"\"");
         return commandList;
     }
-    
-    
+
+
     private void deleteIncludeExcludeFiles() {
         if ((includesFile != null) && (!includesFile.delete())) {
             LOGGER.log(Level.WARNING, "could not delete {0}", includesFile);
@@ -672,7 +1006,34 @@ public class RdiffBackupRestore {
     }
 
 
-    
+    private List<String> createCommandList(String tempDirPath,
+            File includesFile, File excludesFile) {
+
+        List<String> commandList = new ArrayList<String>();
+
+        commandList.add(FileTools.rdiffbackupCommand);
+        //else commandList.add(FileTools.rdiffbackupCommand);
+
+        commandList.add("--terminal-verbosity");
+        commandList.add("7");
+
+        if (tempDirPath != null) {
+            commandList.add("--tempdir");
+            commandList.add(tempDirPath);
+        }
+
+        // !!! includes must be defined before excludes !!!
+        if ((includesFile != null)) {
+            commandList.add("--include-globbing-filelist");
+            commandList.add(includesFile.getPath());
+        }
+        if ((excludesFile != null) ) {
+            commandList.add("--exclude-globbing-filelist");
+            commandList.add(excludesFile.getPath());
+        }
+
+        return commandList;
+    }
 
     private List<String> createCommandList(String tempDirPath,
             File includesFile, String includes,
@@ -709,14 +1070,14 @@ public class RdiffBackupRestore {
     private File getCurrentMirror(String backupDst) {
         File rdiffBackupDataDirectory = new File(
                 backupDst + File.separator + "rdiff-backup-data");
-        
+
         if (!rdiffBackupDataDirectory.exists()) {
-        	rdiffBackupDataDirectory.mkdir();
+        	//rdiffBackupDataDirectory.mkdir();
         	LOGGER.fine("getCurrentMirror not exists: "+backupDst+" : "+rdiffBackupDataDirectory.getPath());
 	        for (long i=FileTools.mountWaitTime;i>0;i=i-FileTools.mountStep){
-    			if (!rdiffBackupDataDirectory.exists()){    			
+    			if (!rdiffBackupDataDirectory.exists()){
 					try {
-						//logger.log(Level.FINE, "DokeanSSHFS:Return: {0}",returnValue); 
+						//logger.log(Level.FINE, "DokeanSSHFS:Return: {0}",returnValue);
 						Thread.sleep(FileTools.mountStep);
 					} catch (InterruptedException e) {
 						// TODO Auto-generated catch block
@@ -738,7 +1099,7 @@ public class RdiffBackupRestore {
         /*
         if (currentBackup == null)
         {
-        	
+
         }
         */
         return (currentBackup.length == 0 ? null : currentBackup[0]);

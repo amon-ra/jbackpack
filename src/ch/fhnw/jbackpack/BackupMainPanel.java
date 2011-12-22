@@ -48,6 +48,7 @@ import java.awt.event.WindowEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.text.ChoiceFormat;
 import java.text.DateFormat;
@@ -118,6 +119,10 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
      * preferences key for the ssh user
      */
     public static final String SSH_USER = "ssh_user";
+    /**
+     * preferences key for the ssh port
+     */
+    public static final String SSH_PORT = "ssh_port";
     /**
      * preferences key for the ssh base directory
      */
@@ -197,6 +202,10 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
      * preferences key for the temporary directory
      */
     public static final String TEMPORARY_DIRECTORY = "temporary_directory";
+    /**
+     * preferences key for the temporary directory
+     */
+    public static final String DOKAN_DIRECTORY = "dokan_directory";
     /**
      * preferences key for compressing the backup
      */
@@ -325,6 +334,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 LOCAL_DESTINATION_DIRECTORY, localStorageTextField);
         textComponentMap.put(SSH_SERVER, sshServerTextField);
         textComponentMap.put(SSH_USER, sshUserNameTextField);
+        textComponentMap.put(SSH_PORT, sshPortTextField);
         textComponentMap.put(SSH_BASE, sshBaseDirTextField);
         textComponentMap.put(SSH_DIRECTORY, sshStorageTextField);
         textComponentMap.put(SMB_SERVER, smbServerTextField);
@@ -419,6 +429,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         sshStorageTextField.getDocument().addDocumentListener(this);
         smbStorageTextField.getDocument().addDocumentListener(this);
         tempDirTextField.getDocument().addDocumentListener(this);
+        dokanDirTextField.getDocument().addDocumentListener(this);
 
         // set preferences
         preferences = Preferences.userNodeForPackage(JBackpack.class);
@@ -551,6 +562,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         sshStorageTextField.setText(null);
         localRadioButton.setSelected(true);
         sshUserNameTextField.setText(null);
+        sshPortTextField.setText("22");
         sshServerTextField.setText(null);
         sshPasswordField.setText(null);
 
@@ -629,6 +641,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
 
 
         String sshUser = sshUserNameTextField.getText();
+        String sshPort = sshPortTextField.getText();
         String sshServer = sshServerTextField.getText();
 
         try {
@@ -652,11 +665,22 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         String temporaryDirectory = preferences.get(TEMPORARY_DIRECTORY, null);
         if (temporaryDirectory == null) {
             customTempDirRadioButton.setSelected(false);
+
         } else {
             customTempDirRadioButton.setSelected(true);
             tempDirTextField.setText(temporaryDirectory);
         }
         updateTempDirState();
+
+        String dokanDirectory = preferences.get(DOKAN_DIRECTORY, null);
+        if (dokanDirectory == null) {
+            customDokanDirRadioButton.setSelected(false);
+            FileTools.DOKAN_HOME = "";
+        } else {
+            customDokanDirRadioButton.setSelected(true);
+            dokanDirTextField.setText(dokanDirectory);
+        }
+        updateDokanDirState();
 
         compressionCheckBox.setSelected(
                 preferences.getBoolean(COMPRESS_BACKUP, true));
@@ -722,6 +746,11 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
             preferences.remove(TEMPORARY_DIRECTORY);
         } else {
             preferences.put(TEMPORARY_DIRECTORY, tempDirTextField.getText());
+        }
+        if (defaultDokanDirRadioButton.isSelected()) {
+            preferences.remove(DOKAN_DIRECTORY);
+        } else {
+            preferences.put(DOKAN_DIRECTORY, dokanDirTextField.getText());
         }
         preferences.putBoolean(JBackpack.SHOW_REMINDER, showReminder);
         preferences.putInt(JBackpack.REMINDER_TIMEOUT, reminderTimeout);
@@ -959,6 +988,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         rdiffBackupRestore = new RdiffBackupRestore();
         timeLabel.setText(timeFormat.format(new Date(0)));
 
+        LOGGER.fine("runBackup");
         // execute backup operation outside of the Swing Event Thread
         currentSwingWorker = new BackupSwingWorker(sourcePath, destinationPath,
                 maxFileSize, minFileSize, directSSH, sshPassword);
@@ -1001,6 +1031,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         destinationLocationButtonGroup = new javax.swing.ButtonGroup();
         authenticationButtonGroup = new javax.swing.ButtonGroup();
         tempDirButtonGroup = new javax.swing.ButtonGroup();
+        dokanDirButtonGroup = new javax.swing.ButtonGroup();
         mainTabbedPane = new javax.swing.JTabbedPane();
         backupCardPanel = new javax.swing.JPanel();
         backupPanel = new javax.swing.JPanel();
@@ -1080,6 +1111,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         sshServerTextField = new javax.swing.JTextField();
         sshUserNameLabel = new javax.swing.JLabel();
         sshUserNameTextField = new javax.swing.JTextField();
+        sshPortLabel = new javax.swing.JLabel();
+        sshPortTextField = new javax.swing.JTextField();
         sshBaseDirLabel = new javax.swing.JLabel();
         sshBaseDirTextField = new javax.swing.JTextField();
         sshAuthenticationPanel = new javax.swing.JPanel();
@@ -1154,6 +1187,16 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         tempDirDetailsPanel = new javax.swing.JPanel();
         tempDirTextField = new javax.swing.JTextField();
         tempDirBrowseButton = new javax.swing.JButton();
+        dokanDirHeaderPanel = new javax.swing.JPanel();
+        dokanDirSeparator1 = new javax.swing.JSeparator();
+        dokanDirLabel = new javax.swing.JLabel();
+        jSeparator7 = new javax.swing.JSeparator();
+        dokanDirRadioButtonPanel = new javax.swing.JPanel();
+        defaultDokanDirRadioButton = new javax.swing.JRadioButton();
+        customDokanDirRadioButton = new javax.swing.JRadioButton();
+        dokanDirDetailsPanel = new javax.swing.JPanel();
+        dokanDirTextField = new javax.swing.JTextField();
+        dokanDirBrowseButton = new javax.swing.JButton();
         storageUsageLabel = new javax.swing.JLabel();
         storageUsageProgressBar = new javax.swing.JProgressBar();
         progressPanel = new javax.swing.JPanel();
@@ -1786,7 +1829,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         sshServerLabel.setText(bundle.getString("BackupMainPanel.sshServerLabel.text")); // NOI18N
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.insets = new java.awt.Insets(0, 10, 0, 0);
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.insets = new java.awt.Insets(0, 1, 0, 0);
         sshServerPanel.add(sshServerLabel, gridBagConstraints);
 
         sshServerTextField.setName("sshServerTextField"); // NOI18N
@@ -1797,13 +1841,15 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         });
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.weightx = 0.5;
+        gridBagConstraints.gridy = 0;
         gridBagConstraints.insets = new java.awt.Insets(0, 5, 0, 0);
         sshServerPanel.add(sshServerTextField, gridBagConstraints);
 
         sshUserNameLabel.setText(bundle.getString("BackupMainPanel.sshUserNameLabel.text")); // NOI18N
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.gridy = 0;
         gridBagConstraints.insets = new java.awt.Insets(0, 10, 0, 0);
         sshServerPanel.add(sshUserNameLabel, gridBagConstraints);
 
@@ -1816,9 +1862,30 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridwidth = java.awt.GridBagConstraints.REMAINDER;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.weightx = 1.0;
-        gridBagConstraints.insets = new java.awt.Insets(0, 5, 0, 10);
+        gridBagConstraints.weightx = 0.3;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.insets = new java.awt.Insets(0, 10, 0, 0);
         sshServerPanel.add(sshUserNameTextField, gridBagConstraints);
+
+        sshPortLabel.setText(bundle.getString("BackupMainPanel.sshPortLabel.text")); // NOI18N
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.insets = new java.awt.Insets(5, 1, 5, 0);
+        sshServerPanel.add(sshPortLabel, gridBagConstraints);
+
+        sshPortTextField.setName("sshPortTextField"); // NOI18N
+        sshPortTextField.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                sshPortTextFieldActionPerformed(evt);
+            }
+        });
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.weightx = 0.2;
+        gridBagConstraints.insets = new java.awt.Insets(5, 1, 5, 0);
+        sshServerPanel.add(sshPortTextField, gridBagConstraints);
+
 
         sshBaseDirLabel.setText(bundle.getString("BackupMainPanel.sshBaseDirLabel.text")); // NOI18N
         gridBagConstraints = new java.awt.GridBagConstraints();
@@ -1830,8 +1897,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridwidth = java.awt.GridBagConstraints.REMAINDER;
         gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
-        gridBagConstraints.weightx = 1.0;
-        gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 10);
+        gridBagConstraints.weightx = 0.8;
+        gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 0);
         sshServerPanel.add(sshBaseDirTextField, gridBagConstraints);
 
         gridBagConstraints = new java.awt.GridBagConstraints();
@@ -2438,6 +2505,92 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 10);
         advancedSettingsPanel.add(tempDirDetailsPanel, gridBagConstraints);
 
+        if (CurrentOperatingSystem.OS == OperatingSystem.Windows){
+        dokanDirHeaderPanel.setLayout(new java.awt.GridBagLayout());
+        dokanDirHeaderPanel.add(dokanDirSeparator1, new java.awt.GridBagConstraints());
+
+        dokanDirLabel.setFont(dokanDirLabel.getFont().deriveFont(dokanDirLabel.getFont().getStyle() | java.awt.Font.BOLD));
+        dokanDirLabel.setText(bundle.getString("BackupMainPanel.dokanDirLabel.text")); // NOI18N
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
+        gridBagConstraints.insets = new java.awt.Insets(0, 5, 0, 0);
+        dokanDirHeaderPanel.add(dokanDirLabel, gridBagConstraints);
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.insets = new java.awt.Insets(0, 5, 0, 0);
+        dokanDirHeaderPanel.add(jSeparator6, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridwidth = java.awt.GridBagConstraints.REMAINDER;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.insets = new java.awt.Insets(20, 0, 0, 0);
+        advancedSettingsPanel.add(dokanDirHeaderPanel, gridBagConstraints);
+
+        dokanDirRadioButtonPanel.setLayout(new java.awt.GridBagLayout());
+
+        dokanDirButtonGroup.add(defaultDokanDirRadioButton);
+        defaultDokanDirRadioButton.setSelected(true);
+        defaultDokanDirRadioButton.setText(bundle.getString("BackupMainPanel.defaultTempDirRadioButton.text")); // NOI18N
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridwidth = java.awt.GridBagConstraints.REMAINDER;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        dokanDirRadioButtonPanel.add(defaultDokanDirRadioButton, gridBagConstraints);
+
+        dokanDirButtonGroup.add(customDokanDirRadioButton);
+        customDokanDirRadioButton.setText(bundle.getString("BackupMainPanel.customTempDirRadioButton.text")); // NOI18N
+        customDokanDirRadioButton.addItemListener(new java.awt.event.ItemListener() {
+            public void itemStateChanged(java.awt.event.ItemEvent evt) {
+                customDokanDirRadioButtonItemStateChanged(evt);
+            }
+        });
+        customDokanDirRadioButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                customDokanDirRadioButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridwidth = java.awt.GridBagConstraints.REMAINDER;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        dokanDirRadioButtonPanel.add(customDokanDirRadioButton, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
+        gridBagConstraints.insets = new java.awt.Insets(0, 10, 0, 0);
+        advancedSettingsPanel.add(dokanDirRadioButtonPanel, gridBagConstraints);
+
+        dokanDirDetailsPanel.setBorder(javax.swing.BorderFactory.createTitledBorder(""));
+        dokanDirDetailsPanel.setName("dokanDirDetailsPanel"); // NOI18N
+        dokanDirDetailsPanel.setLayout(new java.awt.GridBagLayout());
+
+        dokanDirTextField.setName("dokanDirTextField"); // NOI18N
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridwidth = 2;
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.weightx = 1.0;
+        gridBagConstraints.insets = new java.awt.Insets(3, 10, 0, 0);
+        dokanDirDetailsPanel.add(dokanDirTextField, gridBagConstraints);
+
+        dokanDirBrowseButton.setIcon(new javax.swing.ImageIcon(getClass().getResource("/ch/fhnw/jbackpack/icons/16x16/fileopen.png"))); // NOI18N
+        dokanDirBrowseButton.setMargin(new java.awt.Insets(2, 2, 2, 2));
+        dokanDirBrowseButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                dokanDirBrowseButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridwidth = java.awt.GridBagConstraints.REMAINDER;
+        gridBagConstraints.insets = new java.awt.Insets(3, 5, 0, 5);
+        dokanDirDetailsPanel.add(dokanDirBrowseButton, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.fill = java.awt.GridBagConstraints.HORIZONTAL;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTH;
+        gridBagConstraints.weighty = 1.0;
+        gridBagConstraints.insets = new java.awt.Insets(5, 5, 5, 10);
+        advancedSettingsPanel.add(dokanDirDetailsPanel, gridBagConstraints);
+        }
         mainTabbedPane.addTab(bundle.getString("BackupMainPanel.advancedSettingsPanel.TabConstraints.tabTitle"), new javax.swing.ImageIcon(getClass().getResource("/ch/fhnw/jbackpack/icons/16x16/configure.png")), advancedSettingsPanel); // NOI18N
 
         add(mainTabbedPane, "mainTabbedPane");
@@ -2719,6 +2872,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         }
         String sshUserName = sshUserNameTextField.getText();
         String sshServerName = sshServerTextField.getText();
+        String sshPort = sshPortTextField.getText();
         String sshPassword = getSshPassword(sshUserName, sshServerName);
 
         if (destinationEncrypted) {
@@ -2740,7 +2894,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 // check if rdiff-backup is usable on the remote server
                 BackupServerCheckSwingWorker backupServerCheckSwingWorker =
                         new BackupServerCheckSwingWorker(parentFrame,
-                        sshUserName, sshServerName, sshPassword,
+                        sshUserName, sshServerName,sshPort, sshPassword,
                         this, minFileSize, maxFileSize);
                 backupServerCheckSwingWorker.execute();
             } else {
@@ -2820,6 +2974,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
 
     private void sshLogInOutButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_sshLogInOutButtonActionPerformed
         if (LOGIN.equals(sshLogInOutButton.getActionCommand())) {
+        	LOGGER.log(Level.FINEST, "Mounting");
             sshLogin(false);
         } else {
             try {
@@ -2833,7 +2988,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                 // umount
                 String mountPoint = getSshfsMountPoint();
                 if ((mountPoint != null)
-                        && FileTools.umount(mountPoint,FileTools.SSHFS,"", true,sshLoginSwingWorker.processExecutor)) {
+                        && FileTools.umount(mountPoint,FileTools.SSHFS,"", true,new ProcessExecutor())) {
                     setSshMounted(false);
                     destinationChanged();
                     sshPasswordField.requestFocusInWindow();
@@ -2849,6 +3004,33 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         }
     }//GEN-LAST:event_sshLogInOutButtonActionPerformed
 
+    public void sshLogout(){
+            try {
+                // close connection to database (if any)
+                RdiffFileDatabase rdiffFileDatabase =
+                        rdiffChooserPanel.getRdiffFileDatabase();
+                if (rdiffFileDatabase != null) {
+                    rdiffFileDatabase.close();
+                }
+
+                // umount
+                String mountPoint = getSshfsMountPoint();
+                if ((mountPoint != null)
+                        && FileTools.umount(mountPoint,FileTools.SSHFS,"", true,new ProcessExecutor())) {
+                    setSshMounted(false);
+                    destinationChanged();
+                    sshPasswordField.requestFocusInWindow();
+                } else {
+                    JOptionPane.showMessageDialog(parentFrame,
+                            BUNDLE.getString("Logout_Failed"),
+                            BUNDLE.getString("Error"),
+                            JOptionPane.ERROR_MESSAGE);
+                }
+            } catch (IOException ex) {
+                LOGGER.log(Level.SEVERE, null, ex);
+            }
+
+    }
     private void addExcludesButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_addExcludesButtonActionPerformed
         addSelectedFiles(BUNDLE.getString("Select_Files_To_Exclude"),
                 new File(backupSourceTextField.getText()), excludesTextArea);
@@ -3093,6 +3275,11 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         sshPasswordField.requestFocusInWindow();
     }//GEN-LAST:event_sshUserNameTextFieldActionPerformed
 
+    private void sshPortTextFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_sshPortTextFieldActionPerformed
+        sshPasswordField.selectAll();
+        sshPasswordField.requestFocusInWindow();
+    }//GEN-LAST:event_sshPortTextFieldActionPerformed
+
     private void sshPasswordFieldActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_sshPasswordFieldActionPerformed
         sshLogin(true);
     }//GEN-LAST:event_sshPasswordFieldActionPerformed
@@ -3155,6 +3342,53 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         }
 }//GEN-LAST:event_tempDirBrowseButtonActionPerformed
 
+    private void dokanDirBrowseButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_dokanDirBrowseButtonActionPerformed
+
+        String title = BUNDLE.getString("Select_Dokan_Directory");
+
+        // walk currentDir up to existing directory
+        File currentDir = new File(dokanDirTextField.getText());
+        for (File parentFile = currentDir.getParentFile();
+                (!currentDir.exists()) && (parentFile != null);) {
+            currentDir = parentFile;
+            parentFile = currentDir.getParentFile();
+        }
+
+        if (CurrentOperatingSystem.OS == OperatingSystem.Mac_OS_X) {
+            FileDialog fileDialog = new FileDialog(
+                    parentFrame, title, FileDialog.LOAD);
+            fileDialog.setDirectory(currentDir.getPath());
+            System.setProperty("apple.awt.fileDialogForDirectories", "true");
+            fileDialog.setVisible(true);
+            System.setProperty("apple.awt.fileDialogForDirectories", "false");
+            String directory = fileDialog.getDirectory();
+            String file = fileDialog.getFile();
+            if ((directory != null) && (file != null)) {
+                dokanDirTextField.setText(
+                        directory + file + File.separatorChar);
+            }
+
+        } else {
+            JFileChooser directoryChooser = new JFileChooser();
+            directoryChooser.setFileSelectionMode(
+                    JFileChooser.DIRECTORIES_ONLY);
+            directoryChooser.setFileHidingEnabled(false);
+            FileFilter noHiddenFilesSwingFilter =
+                    NoHiddenFilesSwingFileFilter.getInstance();
+            directoryChooser.addChoosableFileFilter(noHiddenFilesSwingFilter);
+            directoryChooser.setFileFilter(noHiddenFilesSwingFilter);
+            directoryChooser.setCurrentDirectory(currentDir);
+            directoryChooser.setDialogTitle(title);
+            directoryChooser.setApproveButtonText(BUNDLE.getString("Choose"));
+            if (directoryChooser.showOpenDialog(this)
+                    == JFileChooser.APPROVE_OPTION) {
+                String selectedPath = directoryChooser.getSelectedFile().getPath();
+                dokanDirTextField.setText(selectedPath);
+            }
+        }
+}//GEN-LAST:event_dokanDirBrowseButtonActionPerformed
+
+
     private void localRadioButtonItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_localRadioButtonItemStateChanged
         if (localRadioButton.isSelected()) {
             showCard(destinationCardPanel, "localStoragePanel");
@@ -3172,6 +3406,10 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         updateTempDirState();
     }//GEN-LAST:event_customTempDirRadioButtonItemStateChanged
 
+    private void customDokanDirRadioButtonItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_customDokanDirRadioButtonItemStateChanged
+        updateDokanDirState();
+    }//GEN-LAST:event_customDokanDirRadioButtonItemStateChanged
+
     private void sshPasswordRadioButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_sshPasswordRadioButtonActionPerformed
         sshPasswordField.requestFocusInWindow();
     }//GEN-LAST:event_sshPasswordRadioButtonActionPerformed
@@ -3179,6 +3417,10 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
     private void customTempDirRadioButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_customTempDirRadioButtonActionPerformed
         tempDirTextField.requestFocusInWindow();
     }//GEN-LAST:event_customTempDirRadioButtonActionPerformed
+
+    private void customDokanDirRadioButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_customDokanDirRadioButtonActionPerformed
+        dokanDirTextField.requestFocusInWindow();
+    }//GEN-LAST:event_customDokanDirRadioButtonActionPerformed
 
     private void localRadioButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_localRadioButtonActionPerformed
         localStorageTextField.requestFocusInWindow();
@@ -3594,6 +3836,16 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         tempDirBrowseButton.setEnabled(customDir);
     }
 
+    private void updateDokanDirState() {
+        boolean customDir = customDokanDirRadioButton.isSelected();
+        if (!customDir) {
+            dokanDirTextField.setText(System.getenv("ProgramFiles")+"\\Dokan\\DokanLibrary");
+            FileTools.DOKAN_HOME=System.getenv("ProgramFiles")+"\\Dokan\\DokanLibrary";
+        }
+        dokanDirTextField.setEditable(customDir);
+        dokanDirBrowseButton.setEnabled(customDir);
+    }
+
     private void restore(RdiffFile[] selectedFiles, File restoreDestination) {
         if (!destinationEncrypted && sshfsMounted) {
             // TODO: check for remote rdiff-backup
@@ -3745,6 +3997,109 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         }
     }
 
+    public void createJob(File scriptFile) throws IOException
+    {
+    boolean exclude = excludeCheckBox.isSelected();
+    boolean directSSH = sshRadioButton.isSelected();
+    String destinationPath =getBackupDestination();
+    String sourcePath = backupSourceTextField.getText();
+    File sourceDirectory = new File(sourcePath);
+    Long maxFileSize = (exclude && maxSizeCheckBox.isSelected())
+            ? getFileSize(maxSizeTextField, maxSizeComboBox)
+            : null;
+    Long minFileSize = (exclude && minSizeCheckBox.isSelected())
+            ? getFileSize(minSizeTextField, minSizeComboBox)
+            : null;
+    // some preliminary exclude checks
+    String excludes = exclude ? excludesTextArea.getText() : "";
+    String subDirCheckPath = null;
+
+    if (localRadioButton.isSelected()) {
+        subDirCheckPath = destinationPath;
+    } else if (sshRadioButton.isSelected()) {
+        subDirCheckPath = getSshfsMountPoint();
+    } else if (smbRadioButton.isSelected()) {
+        subDirCheckPath = getSmbfsMountPoint();
+    }
+    if (subDirCheckPath == null) throw new IOException();
+    File subDirCheckFile = new File(subDirCheckPath);
+    if (FileTools.isSubDir(sourceDirectory, subDirCheckFile)) {
+        if (LOGGER.isLoggable(Level.INFO)) {
+            LOGGER.log(Level.INFO, "{0} is a subdirectory of {1}, "
+                    + "adding {0} to exclusions",
+                    new Object[]{subDirCheckFile, sourceDirectory});
+        }
+        if ((excludes == null) || excludes.isEmpty()) {
+            excludes = subDirCheckPath;
+        } else {
+            excludes += (LINE_SEPARATOR + subDirCheckPath);
+        }
+    }
+
+    boolean include = exclude && includesCheckBox.isSelected();
+    if (directSSH) {
+        String sshStorage = sshStorageTextField.getText();
+        while (sshStorage.startsWith(File.separator)) {
+            sshStorage = sshStorage.substring(File.separator.length());
+        }
+        String sshBaseDirectory = sshBaseDirTextField.getText();
+        if (!sshBaseDirectory.isEmpty()) {
+            sshStorage = sshBaseDirectory + '/'
+                    + sshStorageTextField.getText();
+        }
+
+
+        FileWriter fileWriter = null;
+        try {
+        	//sshPortTextField
+            String script = (new RdiffBackupRestore()).backupViaSSH(sourceDirectory,
+                    sshUserNameTextField.getText(),
+                    sshServerTextField.getText(), sshPortTextField.getText(),sshStorage,
+                    sshPasswordField.getText(), tempDirTextField.getText(),
+                    excludes,
+                    include ? includesTextArea.getText() : "",
+                    compressionCheckBox.isSelected(),
+                    maxFileSize, minFileSize,
+                    exclude && excludeDeviceFilesCheckBox.isSelected(),
+                    exclude && excludeFifosCheckBox.isSelected(),
+                    exclude && excludeOtherFileSystemsCheckBox.isSelected(),
+                    exclude && excludeSocketsCheckBox.isSelected(),
+                    exclude && excludeSymlinksCheckBox.isSelected());
+            LOGGER.fine("SAVING.............."+scriptFile.getPath()+"...................."+script);
+
+            fileWriter = new FileWriter(scriptFile);
+
+            fileWriter.write(script);
+            //fileWriter.flush();
+        } catch (IOException ex) {
+            LOGGER.log(Level.SEVERE, null, ex);
+            throw ex;
+        } finally {
+            if (fileWriter != null) {
+                try {
+                    fileWriter.close();
+                } catch (IOException ex) {
+                    LOGGER.log(Level.SEVERE, null, ex);
+                }
+            }
+        }
+        scriptFile.setExecutable(true);
+/*
+    } else {
+        rdiffBackupRestore.backupViaFileSystem(
+                sourceDirectory, destinationDirectory,
+                tempDirTextField.getText(), excludes,
+                include ? includesTextArea.getText() : "",
+                compressionCheckBox.isSelected(),
+                maxFileSize, minFileSize,
+                exclude && excludeDeviceFilesCheckBox.isSelected(),
+                exclude && excludeFifosCheckBox.isSelected(),
+                exclude && excludeOtherFileSystemsCheckBox.isSelected(),
+                exclude && excludeSocketsCheckBox.isSelected(),
+                exclude && excludeSymlinksCheckBox.isSelected());
+*/
+    }
+}
     private void systemCheck() {
         sshfsEnabled = true;
         encfsEnabled = true;
@@ -3753,7 +4108,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         	case Windows:
                 // expect is necessary for both sshfs and encfs password changes
                     returnValue = processExecutor.executeProcess(
-                            USER_HOME+"\\.jbackpack\\DokanSSHFS.exe", "--version");
+                            FileTools.DOKANSSH,"-v");
                     if (returnValue != 0) {
                         JEditorPane editorPane = new JEditorPane("text/html",
                                 BUNDLE.getString("Warning_No_SSHFS"));
@@ -4294,6 +4649,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         sshServerTextField.setEditable(!mounted);
         sshUserNameTextField.setEditable(!mounted);
         sshBaseDirTextField.setEditable(!mounted);
+        sshPortTextField.setEditable(!mounted);
         sshPasswordRadioButton.setEnabled(!mounted);
         sshPasswordField.setEditable(!mounted);
         sshPasswordField.setEnabled(!mounted);
@@ -4482,17 +4838,23 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
 
                 String baseDir = sshBaseDirTextField.getText();
 
+                String port = sshPortTextField.getText();
 
+                LOGGER.log(Level.WARNING,"doinbackground SSHFS");
+
+                //if ((new File(mountPoint)).exists())
+                //	return true;
                 if (sshPublicKeyRadioButton.isSelected()) {
-                	return FileTools.mountSSHFS(processExecutor,user,host,baseDir,mountPoint,null);
+                	return FileTools.mountSSHFS(processExecutor,user,host,port,baseDir,mountPoint,null);
                 } else {
 
                     // authentication with username and password
                     String password = new String(
                             sshPasswordField.getPassword());
-                    return FileTools.mountSSHFS(processExecutor,user,host,baseDir,mountPoint,password);
+                    return FileTools.mountSSHFS(processExecutor,user,host,port,baseDir,mountPoint,password);
 
                 }
+
             } catch (Exception exception) {
                 LOGGER.log(Level.WARNING, "SSH login failed", exception);
             }
@@ -4654,6 +5016,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         private final boolean directSSH;
         private final String sshPassword;
 
+
         public BackupSwingWorker(String sourcePath, String destinationPath,
                 Long maxFileSize, Long minFileSize,
                 boolean directSSH, String sshPassword) {
@@ -4686,7 +5049,10 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
         protected void done() {
             backupTimer.stop();
             try {
-                if (get()) {
+                Boolean success = false;
+                success = get();
+
+                if (success) {
 
                     // update timestamp for JBackpack reminder
                     long now = System.currentTimeMillis();
@@ -4697,6 +5063,9 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                     } catch (BackingStoreException ex) {
                         LOGGER.log(Level.SEVERE, null, ex);
                     }
+
+                    if (directSSH) sshLogin(false);
+
 
                     // automatic deletion of certain increments
                     autoDeletion(destinationDirectory);
@@ -4751,6 +5120,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
             // some preliminary exclude checks
             String excludes = exclude ? excludesTextArea.getText() : "";
             String subDirCheckPath = null;
+            LOGGER.finest("BackupSwing");
             if (localRadioButton.isSelected()) {
                 subDirCheckPath = destinationPath;
             } else if (sshRadioButton.isSelected()) {
@@ -4783,10 +5153,10 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                     sshStorage = sshBaseDirectory + '/'
                             + sshStorageTextField.getText();
                 }
-
-                boolean ret = rdiffBackupRestore.backupViaSSH(sourceDirectory,
+                //sshPortTextField
+                String script = rdiffBackupRestore.backupViaSSH(sourceDirectory,
                         sshUserNameTextField.getText(),
-                        sshServerTextField.getText(), sshStorage,
+                        sshServerTextField.getText(),sshPortTextField.getText(), sshStorage,
                         sshPassword, tempDirTextField.getText(),
                         excludes,
                         include ? includesTextArea.getText() : "",
@@ -4797,9 +5167,12 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                         exclude && excludeOtherFileSystemsCheckBox.isSelected(),
                         exclude && excludeSocketsCheckBox.isSelected(),
                         exclude && excludeSymlinksCheckBox.isSelected());
-    	        return ret;
+                LOGGER.finest(script);
+                sshLogout();
+               return processExecutor.executeScript(true,true,script) == 0;
+
             } else {
-                return rdiffBackupRestore.backupViaFileSystem(
+                String 	script = rdiffBackupRestore.backupViaFileSystem(
                         sourceDirectory, destinationDirectory,
                         tempDirTextField.getText(), excludes,
                         include ? includesTextArea.getText() : "",
@@ -4810,8 +5183,12 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
                         exclude && excludeOtherFileSystemsCheckBox.isSelected(),
                         exclude && excludeSocketsCheckBox.isSelected(),
                         exclude && excludeSymlinksCheckBox.isSelected());
+                LOGGER.finest(script);
+                return processExecutor.executeScript(true,true,script) == 0;
+
             }
         }
+
     }
 
     private class BackupActionListener implements ActionListener {
@@ -4837,6 +5214,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
             timeLabel.setText(timeString);
         }
     }
+
+
 
     private class RestoreSwingWorker extends SwingWorker<Boolean, Void> {
 
@@ -5057,6 +5436,7 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
     private javax.swing.JSeparator jSeparator4;
     private javax.swing.JSeparator jSeparator5;
     private javax.swing.JSeparator jSeparator6;
+    private javax.swing.JSeparator jSeparator7;
     private javax.swing.JSeparator jSeparator8;
     private javax.swing.JRadioButton localRadioButton;
     private javax.swing.JButton localStorageButton;
@@ -5144,6 +5524,8 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
     private javax.swing.JTextField sshStorageTextField;
     private javax.swing.JLabel sshUserNameLabel;
     private javax.swing.JTextField sshUserNameTextField;
+    private javax.swing.JLabel sshPortLabel;
+    private javax.swing.JTextField sshPortTextField;
     private javax.swing.JLabel statisticsLabel;
     private javax.swing.JTextArea statisticsTextField;
     private javax.swing.JScrollPane statisticsTextFieldScrollPane;
@@ -5157,6 +5539,16 @@ public class BackupMainPanel extends JPanel implements DocumentListener {
     private javax.swing.JPanel tempDirRadioButtonPanel;
     private javax.swing.JSeparator tempDirSeparator1;
     private javax.swing.JTextField tempDirTextField;
+    private javax.swing.JButton dokanDirBrowseButton;
+    private javax.swing.ButtonGroup dokanDirButtonGroup;
+    private javax.swing.JPanel dokanDirDetailsPanel;
+    private javax.swing.JPanel dokanDirHeaderPanel;
+    private javax.swing.JLabel dokanDirLabel;
+    private javax.swing.JPanel dokanDirRadioButtonPanel;
+    private javax.swing.JSeparator dokanDirSeparator1;
+    private javax.swing.JTextField dokanDirTextField;
+    private javax.swing.JRadioButton defaultDokanDirRadioButton;
+    private javax.swing.JRadioButton customDokanDirRadioButton;
     private javax.swing.JLabel timeLabel;
     private javax.swing.JPanel unlockPanel;
     private javax.swing.JRadioButton userHomeRadioButton;
