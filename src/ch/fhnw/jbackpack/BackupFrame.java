@@ -147,7 +147,7 @@ public class BackupFrame extends javax.swing.JFrame {
                 KeyStroke.getKeyStroke(KeyEvent.VK_C, menuShortcutKeyMask));
         if (CurrentOperatingSystem.OS == OperatingSystem.Windows)
         	runPutty.setAccelerator(
-                KeyStroke.getKeyStroke(KeyEvent.VK_R, menuShortcutKeyMask));
+                KeyStroke.getKeyStroke(KeyEvent.VK_U, menuShortcutKeyMask));
         quitMenuItem.setAccelerator(
                 KeyStroke.getKeyStroke(KeyEvent.VK_Q, menuShortcutKeyMask));
 
@@ -336,7 +336,7 @@ public class BackupFrame extends javax.swing.JFrame {
         });
         fileMenu.add(saveCommandMenuItem);
         runPutty.setIcon(new javax.swing.ImageIcon(getClass().getResource("/ch/fhnw/jbackpack/icons/16x16/filesaveas.png"))); // NOI18N
-        runPutty.setText("Save as Command.."); // NOI18N
+        runPutty.setText("Run putty"); // NOI18N
         runPutty.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 runPuttyActionPerformed(evt);
